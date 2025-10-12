@@ -14,6 +14,7 @@ namespace InventorySystem
     public partial class LoginFrm : Form
     {
         private string connectionString = "Data Source=DESKTOP-TK48S3J;Initial Catalog=InventoryManagement;Integrated Security=True;Encrypt=True;TrustServerCertificate=True";
+        private bool isLoading = false;
 
         public static string CurrentUsername { get; private set; }
         public static string CurrentRole { get; private set; }
@@ -23,6 +24,7 @@ namespace InventorySystem
             InitializeComponent();
             ConfigurePasswordField();
             ConfigureEnterKeyBehavior();
+            ConfigureProgressBar();
         }
 
         private void ConfigurePasswordField()
@@ -42,9 +44,18 @@ namespace InventorySystem
             passwordTxtBox.KeyDown += TextBox_KeyDown;
         }
 
+        private void ConfigureProgressBar()
+        {
+            // Configure progress bar to be properly sized and centered
+            toolStripProgressBar1.Alignment = ToolStripItemAlignment.Right;
+            toolStripProgressBar1.Margin = new Padding(50, 3, 50, 3);
+            toolStripProgressBar1.Width = 600; // Adjust based on your form size
+            toolStripProgressBar1.Visible = false;
+        }
+
         private void TextBox_KeyDown(object sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Enter)
+            if (e.KeyCode == Keys.Enter && !isLoading)
             {
                 // Trigger login button click
                 loginBtn.PerformClick();
@@ -53,84 +64,161 @@ namespace InventorySystem
             }
         }
 
-        private void loginBtn_Click(object sender, EventArgs e)
+        private async void loginBtn_Click(object sender, EventArgs e)
         {
-            ClearErrors();
+            if (isLoading) return;
 
-            string username = userTxtBox.Text.Trim();
-            string password = passwordTxtBox.Text;
-
-            if (string.IsNullOrEmpty(username))
+            await PerformLoginAction(async () =>
             {
-                ShowUsernameError("Username is required");
-                userTxtBox.Focus();
-                return;
-            }
+                ClearErrors();
 
-            if (string.IsNullOrEmpty(password))
-            {
-                ShowPasswordError("Password is required");
-                passwordTxtBox.Focus();
-                return;
-            }
+                string username = userTxtBox.Text.Trim();
+                string password = passwordTxtBox.Text;
 
-            try
-            {
-                using (SqlConnection connection = new SqlConnection(connectionString))
+                if (string.IsNullOrEmpty(username))
                 {
-                    connection.Open();
-                    string query = "SELECT UserId, Username, Password, Role FROM Users WHERE Username = @Username";
+                    ShowUsernameError("Username is required");
+                    userTxtBox.Focus();
+                    return false;
+                }
 
-                    using (SqlCommand command = new SqlCommand(query, connection))
+                if (string.IsNullOrEmpty(password))
+                {
+                    ShowPasswordError("Password is required");
+                    passwordTxtBox.Focus();
+                    return false;
+                }
+
+                try
+                {
+                    using (SqlConnection connection = new SqlConnection(connectionString))
                     {
-                        command.Parameters.AddWithValue("@Username", username);
+                        await connection.OpenAsync();
+                        string query = "SELECT UserId, Username, Password, Role FROM Users WHERE Username = @Username";
 
-                        using (SqlDataReader reader = command.ExecuteReader())
+                        using (SqlCommand command = new SqlCommand(query, connection))
                         {
-                            if (reader.Read())
+                            command.Parameters.AddWithValue("@Username", username);
+
+                            using (SqlDataReader reader = await command.ExecuteReaderAsync())
                             {
-                                string storedPassword = reader["Password"].ToString();
-
-                                if (password == storedPassword)
+                                if (await reader.ReadAsync())
                                 {
-                                    CurrentUsername = reader["Username"].ToString();
-                                    CurrentRole = reader["Role"].ToString();
+                                    string storedPassword = reader["Password"].ToString();
 
-                                    ViewFrm viewForm = new ViewFrm();
-                                    viewForm.Show();
-                                    this.Hide();
+                                    if (password == storedPassword)
+                                    {
+                                        CurrentUsername = reader["Username"].ToString();
+                                        CurrentRole = reader["Role"].ToString();
+
+                                        // Simulate loading time
+                                        await Task.Delay(1000);
+
+                                        ViewFrm viewForm = new ViewFrm();
+                                        viewForm.Show();
+                                        this.Hide();
+                                        return true;
+                                    }
+                                    else
+                                    {
+                                        ShowPasswordError("Invalid password");
+                                        passwordTxtBox.Focus();
+                                        passwordTxtBox.SelectAll();
+                                        return false;
+                                    }
                                 }
                                 else
                                 {
-                                    ShowPasswordError("Invalid password");
-                                    passwordTxtBox.Focus();
-                                    passwordTxtBox.SelectAll();
+                                    ShowUsernameError("Username not found");
+                                    userTxtBox.Focus();
+                                    userTxtBox.SelectAll();
+                                    return false;
                                 }
-                            }
-                            else
-                            {
-                                ShowUsernameError("Username not found");
-                                userTxtBox.Focus();
-                                userTxtBox.SelectAll();
                             }
                         }
                     }
                 }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error during login: {ex.Message}", "Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return false;
+                }
+            });
+        }
+
+        private async void viewerBtn_Click(object sender, EventArgs e)
+        {
+            if (isLoading) return;
+
+            await PerformLoginAction(async () =>
+            {
+                CurrentUsername = "Guest";
+                CurrentRole = "Guest";
+
+                // Simulate loading time
+                await Task.Delay(800);
+
+                ViewFrm viewForm = new ViewFrm();
+                viewForm.Show();
+                this.Hide();
+                return true;
+            });
+        }
+
+        private async Task PerformLoginAction(Func<Task<bool>> action)
+        {
+            if (isLoading) return;
+
+            try
+            {
+                SetLoadingState(true);
+
+                // Show progress bar
+                toolStripProgressBar1.Visible = true;
+                toolStripProgressBar1.Style = ProgressBarStyle.Marquee;
+
+                bool success = await action();
+
+                if (!success)
+                {
+                    SetLoadingState(false);
+                }
+                // If successful, the form will be hidden so we don't need to reset loading state
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error during login: {ex.Message}", "Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                SetLoadingState(false);
             }
         }
 
-        private void viewerBtn_Click(object sender, EventArgs e)
+        private void SetLoadingState(bool loading)
         {
-            CurrentUsername = "Guest";
-            CurrentRole = "Guest";
+            isLoading = loading;
 
-            ViewFrm viewForm = new ViewFrm();
-            viewForm.Show();
-            this.Hide();
+            // Enable/disable controls
+            loginBtn.Enabled = !loading;
+            viewerBtn.Enabled = !loading;
+            userTxtBox.Enabled = !loading;
+            passwordTxtBox.Enabled = !loading;
+
+            // Show/hide progress bar
+            toolStripProgressBar1.Visible = loading;
+
+            // Update button texts to show loading state
+            if (loading)
+            {
+                loginBtn.Text = "Loading...";
+                viewerBtn.Text = "Loading...";
+            }
+            else
+            {
+                loginBtn.Text = "Login";
+                viewerBtn.Text = "Continue as viewer only";
+            }
+
+            // Refresh the form to ensure UI updates
+            this.Refresh();
         }
 
         private void ShowUsernameError(string message)
@@ -208,6 +296,16 @@ namespace InventorySystem
         private void TogglePasswordVisibility()
         {
             passwordTxtBox.UseSystemPasswordChar = !passwordTxtBox.UseSystemPasswordChar;
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            // Clean up resources
+            if (isLoading)
+            {
+                SetLoadingState(false);
+            }
+            base.OnFormClosing(e);
         }
     }
 }
