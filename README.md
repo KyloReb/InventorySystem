@@ -1,7 +1,7 @@
 # 📦 Inventory Management System
 
 A **Windows Forms application** for managing supplies and assets inventory, built with **C# (.NET Framework 4.7.2)**.
-This project provides a user-friendly interface for viewing, editing, and tracking inventory data — complete with user roles, logging, and SQL Server connectivity.
+This project provides a user-friendly interface for viewing, editing, and tracking inventory data — complete with **user roles**, **logging**, and **SQL Server connectivity**.
 
 ---
 
@@ -104,6 +104,77 @@ Optionally, set custom table names under the `appSettings` section:
 
 ---
 
+## 🪵 Log Folder and Log File Location
+
+The application automatically creates and manages **log files** for auditing and troubleshooting.
+The log folder and file path are configurable via `App.config` and managed by the `LoggingService`.
+
+---
+
+### 📂 Default Log Location
+
+* **Log Folder:**
+  By default, logs are stored in your system’s temporary directory under `InventorySystem_Logs`.
+
+  **Example:**
+
+  ```
+  C:\Users\<YourUsername>\AppData\Local\Temp\InventorySystem_Logs\
+  ```
+
+* **Log File Name:**
+  Each session creates a new log file with a timestamp, e.g.:
+
+  ```
+  InventorySystem_Log_20251012_153000.txt
+  ```
+
+---
+
+### ⚙️ Configuration (`App.config`)
+
+You can customize the log folder and file naming in the `<loggingConfiguration>` section:
+
+```xml
+<loggingConfiguration>
+  <add key="LogFolderPath" value="%TEMP%\InventorySystem_Logs" />
+  <add key="LogFolderName" value="InventorySystem_Logs" />
+  <add key="LogFileNamePrefix" value="InventorySystem_Log" />
+  <add key="LogFileExtension" value=".txt" />
+  <add key="AutoCleanupOldLogs" value="true" />
+  <add key="LogRetentionDays" value="30" />
+</loggingConfiguration>
+```
+
+**Configuration Keys:**
+
+| Key                    | Description                                                        |
+| ---------------------- | ------------------------------------------------------------------ |
+| **LogFolderPath**      | Base path for logs (supports environment variables like `%TEMP%`). |
+| **LogFolderName**      | Subfolder name for storing logs.                                   |
+| **LogFileNamePrefix**  | Prefix used for each log file.                                     |
+| **LogFileExtension**   | File extension for logs (e.g., `.txt`).                            |
+| **AutoCleanupOldLogs** | Enables automatic deletion of old logs.                            |
+| **LogRetentionDays**   | Number of days to retain old log files.                            |
+
+---
+
+### ⚙️ How Logging Works
+
+1. On startup, the application creates the log folder if it does not exist.
+2. Each run generates a **new log file** with a unique timestamp.
+3. All actions, errors, and events are written to the current log file.
+4. Old logs are automatically deleted based on the retention settings.
+
+---
+
+### 📑 Accessing Logs
+
+* Open the **latest log file** or **log folder** directly from the application’s menu.
+* Log files are **plain text (.txt)** and can be opened using any text editor.
+
+---
+
 ## 🗂️ Project Structure
 
 | File / Folder                                         | Description                                              |
@@ -111,7 +182,7 @@ Optionally, set custom table names under the `appSettings` section:
 | `InventorySystem/ViewFrm.cs`                          | Main form for viewing and editing inventory data         |
 | `InventorySystem/Services/DatabaseService.cs`         | Handles SQL Server operations                            |
 | `InventorySystem/Services/DataGridViewEditService.cs` | Manages grid editing and change tracking                 |
-| `InventorySystem/Services/LoggingService.cs`          | Handles action and error logging                         |
+| `InventorySystem/Services/LoggingService.cs`          | Handles application logging                              |
 | `InventorySystem/LoginFrm.cs`                         | Login form for authentication and role validation        |
 | `InventorySystem/App.config`                          | Application configuration (connection strings, settings) |
 
@@ -130,21 +201,22 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 ---
 
-### 💬 Support
+## 💬 Support
 
 For questions or support, please open an **issue** on [GitHub](https://github.com/yourusername/inventory-management-system/issues).
 
 ---
 
-✅ **Summary of Content:**
+✅ **Summary of Content**
 
 * Project Overview & Features
 * Technologies Used
 * Setup & Configuration
 * Usage Guide
-* File Structure
+* Logging Configuration & Access
+* Project Structure
 * Contribution & License
 
 ---
 
-Would you like me to add **badges** (like build status, license, or .NET version) and a **screenshots/demo section** to make it look even more professional on GitHub?
+Would you like me to add a short **“Screenshots / Demo”** section (with example placeholders for images) to make your GitHub page more visual and professional?
