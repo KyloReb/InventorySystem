@@ -8,12 +8,15 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Data.SqlClient;
+using InventorySystem.Services;
+using System.Configuration;
 
 namespace InventorySystem
 {
     public partial class LoginFrm : Form
     {
-        private string connectionString = "Data Source=DESKTOP-TK48S3J;Initial Catalog=InventoryManagement;Integrated Security=True;Encrypt=True;TrustServerCertificate=True";
+        private DatabaseService _databaseService;
+        private LoggingService _loggingService;
         private bool isLoading = false;
 
         public static string CurrentUsername { get; private set; }
@@ -22,9 +25,56 @@ namespace InventorySystem
         public LoginFrm()
         {
             InitializeComponent();
+            InitializeServices();
             ConfigurePasswordField();
             ConfigureEnterKeyBehavior();
             ConfigureProgressBar();
+        }
+
+        private void InitializeServices()
+        {
+            try
+            {
+                // Initialize logging service first
+                _loggingService = new LoggingService();
+
+                // Initialize database service with connection string from configuration
+                string connectionString = GetConnectionString();
+                _databaseService = new DatabaseService(connectionString, _loggingService);
+
+                // Test connection on startup
+                if (!_databaseService.TestConnection())
+                {
+                    MessageBox.Show("Database connection failed. Please check configuration.",
+                        "Connection Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Service initialization failed: {ex.Message}",
+                    "Initialization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // Continue without services - will handle errors in login methods
+            }
+        }
+
+        private string GetConnectionString()
+        {
+            // Try to get from app.config first, fall back to hardcoded if not found
+            try
+            {
+                var connectionString = ConfigurationManager.ConnectionStrings["InventoryManagementConnection"]?.ConnectionString;
+                if (!string.IsNullOrEmpty(connectionString))
+                {
+                    return connectionString;
+                }
+            }
+            catch
+            {
+                // Fall through to hardcoded connection string
+            }
+
+            // Fallback connection string (same as your original)
+            return "Data Source=DESKTOP-TK48S3J;Initial Catalog=InventoryManagement;Integrated Security=True;Encrypt=True;TrustServerCertificate=True";
         }
 
         private void ConfigurePasswordField()
@@ -91,55 +141,63 @@ namespace InventorySystem
 
                 try
                 {
-                    using (SqlConnection connection = new SqlConnection(connectionString))
+                    // Use DatabaseService instead of raw SQL connection
+                    if (_databaseService == null)
                     {
-                        await connection.OpenAsync();
-                        string query = "SELECT UserId, Username, Password, Role FROM Users WHERE Username = @Username";
+                        throw new InvalidOperationException("Database service is not available");
+                    }
 
-                        using (SqlCommand command = new SqlCommand(query, connection))
+                    string query = "SELECT UserId, Username, Password, Role FROM Users WHERE Username = @Username";
+                    var parameters = new SqlParameter[]
+                    {
+                        new SqlParameter("@Username", username)
+                    };
+
+                    // Execute query using DatabaseService
+                    DataTable result = await Task.Run(() => _databaseService.ExecuteQuery(query, parameters));
+
+                    if (result.Rows.Count > 0)
+                    {
+                        DataRow userRow = result.Rows[0];
+                        string storedPassword = userRow["Password"].ToString();
+
+                        if (password == storedPassword)
                         {
-                            command.Parameters.AddWithValue("@Username", username);
+                            CurrentUsername = userRow["Username"].ToString();
+                            CurrentRole = userRow["Role"].ToString();
 
-                            using (SqlDataReader reader = await command.ExecuteReaderAsync())
-                            {
-                                if (await reader.ReadAsync())
-                                {
-                                    string storedPassword = reader["Password"].ToString();
+                            // Log successful login
+                            _loggingService?.LogMessage("AUTH", $"User {username} logged in successfully as {CurrentRole}");
 
-                                    if (password == storedPassword)
-                                    {
-                                        CurrentUsername = reader["Username"].ToString();
-                                        CurrentRole = reader["Role"].ToString();
+                            // Simulate loading time
+                            await Task.Delay(1000);
 
-                                        // Simulate loading time
-                                        await Task.Delay(1000);
-
-                                        ViewFrm viewForm = new ViewFrm();
-                                        viewForm.Show();
-                                        this.Hide();
-                                        return true;
-                                    }
-                                    else
-                                    {
-                                        ShowPasswordError("Invalid password");
-                                        passwordTxtBox.Focus();
-                                        passwordTxtBox.SelectAll();
-                                        return false;
-                                    }
-                                }
-                                else
-                                {
-                                    ShowUsernameError("Username not found");
-                                    userTxtBox.Focus();
-                                    userTxtBox.SelectAll();
-                                    return false;
-                                }
-                            }
+                            ViewFrm viewForm = new ViewFrm();
+                            viewForm.Show();
+                            this.Hide();
+                            return true;
                         }
+                        else
+                        {
+                            _loggingService?.LogMessage("AUTH", $"Failed login attempt for user {username} - invalid password");
+                            ShowPasswordError("Invalid password");
+                            passwordTxtBox.Focus();
+                            passwordTxtBox.SelectAll();
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        _loggingService?.LogMessage("AUTH", $"Failed login attempt - username not found: {username}");
+                        ShowUsernameError("Username not found");
+                        userTxtBox.Focus();
+                        userTxtBox.SelectAll();
+                        return false;
                     }
                 }
                 catch (Exception ex)
                 {
+                    _loggingService?.LogMessage("ERROR", $"Login error for user {username}: {ex.Message}");
                     MessageBox.Show($"Error during login: {ex.Message}", "Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
@@ -154,6 +212,9 @@ namespace InventorySystem
             {
                 CurrentUsername = "Guest";
                 CurrentRole = "Guest";
+
+                // Log guest access
+                _loggingService?.LogMessage("AUTH", "Guest user accessed the system");
 
                 // Simulate loading time
                 await Task.Delay(800);
@@ -305,6 +366,11 @@ namespace InventorySystem
             {
                 SetLoadingState(false);
             }
+
+            // Dispose services
+            _databaseService?.Dispose();
+            _loggingService?.Dispose();
+
             base.OnFormClosing(e);
         }
     }
