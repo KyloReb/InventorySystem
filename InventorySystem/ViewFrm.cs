@@ -14,13 +14,14 @@ namespace InventorySystem
     public partial class ViewFrm : Form
     {
         private DatabaseService databaseService;
+        private DataLoadingService dataLoadingService;
         private LoggingService loggingService;
         private string currentTable = "Supplies";
         private DataTable dataTable;
         private SqlDataAdapter dataAdapter;
         private bool isAdminUser = false;
 
-        // Service instance
+        // Service instances
         private DataGridViewEditService editService;
 
         // Read table names from config
@@ -46,6 +47,9 @@ namespace InventorySystem
 
                 // Then initialize database service
                 InitializeDatabaseService();
+
+                // Initialize data loading service
+                InitializeDataLoadingService();
             }
             catch (Exception ex)
             {
@@ -56,6 +60,21 @@ namespace InventorySystem
                               MessageBoxIcon.Error);
                 Application.Exit();
                 throw;
+            }
+        }
+
+        private void InitializeDataLoadingService()
+        {
+            try
+            {
+                dataLoadingService = new DataLoadingService(databaseService, loggingService);
+                LogMessage("SYSTEM", "Data loading service initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                string errorMessage = $"Data loading service initialization failed: {ex.Message}";
+                LogMessage("ERROR", errorMessage);
+                throw new Exception(errorMessage, ex);
             }
         }
 
@@ -294,9 +313,6 @@ namespace InventorySystem
             // ✅ Set greeting as the main menu item text
             userToolStripMenuItem.Text = $"Welcome, {username}";
 
-            // ✅ Dropdown items remain unchanged (Change Password, Logout, Exit)
-            // ✅ Their event handlers are already connected in the Designer
-
             // Disable edit menus for Guest users
             bool isGuest = role == "Guest";
             if (editSuppliesToolStripMenuItem != null)
@@ -323,30 +339,11 @@ namespace InventorySystem
         {
             try
             {
-                ShowLoadingState($"Loading {tableType.ToLower()} data...", 40);
+                // Use DataLoadingService to load table data
+                dataTable = dataLoadingService.LoadTableData(tableName, tableType, ShowLoadingState);
 
-                // Validate database service first
-                if (databaseService == null)
-                {
-                    throw new InvalidOperationException("Database service is not initialized");
-                }
-
-                if (!databaseService.IsConnectionValid)
-                {
-                    throw new InvalidOperationException("Database connection is not valid");
-                }
-
-                // Validate table exists
-                if (!databaseService.TableExists(tableName))
-                {
-                    throw new InvalidOperationException($"Table '{tableName}' does not exist in the database");
-                }
-
-                // Use DatabaseService to get table data
-                dataTable = databaseService.GetTableData(tableName);
-
-                // Create data adapter for updates
-                dataAdapter = databaseService.CreateTableDataAdapter(tableName);
+                // Create data adapter for updates using DataLoadingService
+                dataAdapter = dataLoadingService.CreateDataAdapter(tableName);
 
                 // Initialize the edit service with the loaded data
                 editService.InitializeData(dataTable, dataAdapter);
@@ -539,14 +536,10 @@ namespace InventorySystem
         {
             try
             {
-                ShowLoadingState("Testing database connection...", 15);
-                LogMessage("DATA", "Refreshing data...");
+                // Use DataLoadingService for refresh operation
+                dataLoadingService.RefreshData(currentTable, SuppliesTable, AssetsTable, ShowLoadingState);
 
-                databaseService.TestConnection();
-
-                ShowLoadingState("Connection successful...", 30);
-                ShowLoadingState("Refreshing data...", 50);
-
+                // Reload the current table data
                 if (currentTable == "Assets")
                 {
                     LoadAssetsData();
@@ -677,6 +670,7 @@ namespace InventorySystem
 
                 // Dispose services
                 databaseService?.Dispose();
+                dataLoadingService = null; // DataLoadingService doesn't implement IDisposable
                 loggingService?.Dispose();
             }
         }

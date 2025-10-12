@@ -58,6 +58,7 @@
     </Compile>
     <Compile Include="Services\DatabaseService.cs" />
     <Compile Include="Services\DataGridViewEditService.cs" />
+    <Compile Include="Services\DataLoadingService.cs" />
     <Compile Include="Services\LoggingService.cs" />
     <Compile Include="ViewFrm.cs">
       <SubType>Form</SubType>
