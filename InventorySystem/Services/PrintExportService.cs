@@ -8,13 +8,6 @@ using System.Drawing.Imaging;
 using OfficeOpenXml;
 using System.Linq;
 using System.ComponentModel;
-using iText.Kernel.Pdf;
-using iText.Layout;
-using iText.Layout.Element;
-using iText.Layout.Properties;
-using iText.Kernel.Colors;
-using iText.Kernel.Font;
-using iText.IO.Font.Constants;
 using System.Reflection;
 
 namespace InventorySystem.Services
@@ -27,6 +20,7 @@ namespace InventorySystem.Services
         private PrintPreviewDialog printPreviewDialog;
         private PageSetupDialog pageSetupDialog;
         private PrintDialog printDialog;
+        private PdfFormatterService pdfFormatterService;
 
         // Print settings
         private System.Drawing.Font printFont;
@@ -112,6 +106,7 @@ namespace InventorySystem.Services
                 loggingService.LogMessage("INFO", $"EPPlus Assembly Location: {epplusAssembly.Location}");
 
                 InitializePrinting();
+                InitializePdfFormatter();
                 loggingService.LogMessage("SYSTEM", "PrintExportService: Initialized successfully");
             }
             catch (Exception ex)
@@ -138,6 +133,11 @@ namespace InventorySystem.Services
             pageSetupDialog = new PageSetupDialog { Document = printDocument };
             printDialog = new PrintDialog { Document = printDocument };
             printFont = new System.Drawing.Font("Arial", 10);
+        }
+
+        private void InitializePdfFormatter()
+        {
+            pdfFormatterService = new PdfFormatterService(dataGridView, loggingService, title);
         }
 
         public void ShowPrintPreview()
@@ -218,6 +218,8 @@ namespace InventorySystem.Services
             loggingService.LogMessage("INFO", "ValidateDataSource: Validation passed");
             return true;
         }
+
+        // ... (All the printing-related methods remain the same - PrintDocument_BeginPrint, PrintDocument_EndPrint, PrintDocument_PrintPage, etc.)
 
         private void PrintDocument_BeginPrint(object sender, PrintEventArgs e)
         {
@@ -552,133 +554,26 @@ namespace InventorySystem.Services
         {
             try
             {
-                loggingService.LogMessage("INFO", $"ExportToPdf: Starting export to {filePath}");
-                loggingService.LogMessage("INFO", $"ExportToPdf: iText version check - attempting to create PDF");
-
-                var directory = Path.GetDirectoryName(filePath);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                {
-                    loggingService.LogMessage("INFO", $"ExportToPdf: Creating directory {directory}");
-                    Directory.CreateDirectory(directory);
-                }
-
-                // Get visible columns first for logging
-                var visibleColumns = dataGridView.Columns.Cast<DataGridViewColumn>()
-                    .Where(col => col.Visible)
-                    .ToList();
-
-                int dataRowCount = dataGridView.Rows.Cast<DataGridViewRow>().Count(row => !row.IsNewRow);
-                loggingService.LogMessage("INFO", $"ExportToPdf: Columns={visibleColumns.Count}, Rows={dataRowCount}");
-
-                loggingService.LogMessage("INFO", "ExportToPdf: Creating PdfWriter...");
-                using (var writer = new PdfWriter(filePath))
-                {
-                    loggingService.LogMessage("INFO", "ExportToPdf: Creating PdfDocument...");
-                    using (var pdf = new PdfDocument(writer))
-                    {
-                        loggingService.LogMessage("INFO", "ExportToPdf: Creating Document with landscape A4...");
-                        var document = new Document(pdf, iText.Kernel.Geom.PageSize.A4.Rotate());
-                        document.SetMargins(20, 20, 20, 20);
-
-                        // Fonts
-                        loggingService.LogMessage("INFO", "ExportToPdf: Loading fonts...");
-                        PdfFont boldFont = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
-                        PdfFont normalFont = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
-                        loggingService.LogMessage("INFO", "ExportToPdf: Fonts loaded successfully");
-
-                        // Title
-                        loggingService.LogMessage("INFO", "ExportToPdf: Adding title...");
-                        Paragraph titleParagraph = new Paragraph($"{title} - {DateTime.Now:yyyy-MM-dd}")
-                            .SetFont(boldFont)
-                            .SetFontSize(16)
-                            .SetTextAlignment(TextAlignment.CENTER)
-                            .SetMarginBottom(10);
-                        document.Add(titleParagraph);
-
-                        // Date
-                        loggingService.LogMessage("INFO", "ExportToPdf: Adding date...");
-                        Paragraph dateParagraph = new Paragraph($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm}")
-                            .SetFont(normalFont)
-                            .SetFontSize(10)
-                            .SetTextAlignment(TextAlignment.CENTER)
-                            .SetMarginBottom(15);
-                        document.Add(dateParagraph);
-
-                        // Create table with proportional widths
-                        loggingService.LogMessage("INFO", "ExportToPdf: Creating table structure...");
-                        float[] columnWidths = new float[visibleColumns.Count];
-                        for (int i = 0; i < visibleColumns.Count; i++)
-                        {
-                            columnWidths[i] = 1f;
-                        }
-
-                        Table table = new Table(UnitValue.CreatePercentArray(columnWidths));
-                        table.SetWidth(UnitValue.CreatePercentValue(100));
-                        loggingService.LogMessage("INFO", $"ExportToPdf: Table created with {visibleColumns.Count} columns");
-
-                        // Headers
-                        loggingService.LogMessage("INFO", "ExportToPdf: Adding table headers...");
-                        foreach (var column in visibleColumns)
-                        {
-                            Cell headerCell = new Cell()
-                                .Add(new Paragraph(column.HeaderText).SetFont(boldFont).SetFontSize(10))
-                                .SetBackgroundColor(WebColors.GetRGBColor("#F0F0F0"))
-                                .SetTextAlignment(TextAlignment.CENTER)
-                                .SetPadding(5);
-                            table.AddHeaderCell(headerCell);
-                        }
-
-                        // Data rows
-                        loggingService.LogMessage("INFO", "ExportToPdf: Adding data rows...");
-                        int addedRows = 0;
-                        foreach (DataGridViewRow dataRow in dataGridView.Rows)
-                        {
-                            if (!dataRow.IsNewRow)
-                            {
-                                foreach (var column in visibleColumns)
-                                {
-                                    string cellValue = dataRow.Cells[column.Index].Value?.ToString() ?? "";
-                                    Cell dataCell = new Cell()
-                                        .Add(new Paragraph(cellValue).SetFont(normalFont).SetFontSize(9))
-                                        .SetPadding(4)
-                                        .SetTextAlignment(GetTextAlignment(column.ValueType));
-                                    table.AddCell(dataCell);
-                                }
-                                addedRows++;
-                            }
-                        }
-                        loggingService.LogMessage("INFO", $"ExportToPdf: {addedRows} data rows added to table");
-
-                        loggingService.LogMessage("INFO", "ExportToPdf: Adding table to document...");
-                        document.Add(table);
-                        loggingService.LogMessage("INFO", "ExportToPdf: Document completed, closing...");
-                    }
-                }
-
-                loggingService.LogMessage("INFO", "ExportToPdf: PDF created successfully");
+                pdfFormatterService.ExportToPdf(filePath);
                 ShowExportSuccess(filePath);
             }
             catch (Exception ex)
             {
-                loggingService.LogMessage("ERROR", $"ExportToPdf: Failed - {ex.GetType().Name}: {ex.Message}");
-                loggingService.LogMessage("ERROR", $"ExportToPdf: Stack trace: {ex.StackTrace}");
-                if (ex.InnerException != null)
-                {
-                    loggingService.LogMessage("ERROR", $"ExportToPdf: Inner exception: {ex.InnerException.Message}");
-                    loggingService.LogMessage("ERROR", $"ExportToPdf: Inner stack trace: {ex.InnerException.StackTrace}");
-                }
                 HandleError("PDF export error", ex, "Please ensure iText 7+ (namespace 'iText') is properly installed via NuGet.");
             }
         }
 
-        private TextAlignment GetTextAlignment(Type valueType)
+        public void ExportToPdf(string filePath, DataTable dataTable)
         {
-            if (valueType == typeof(int) || valueType == typeof(decimal) ||
-                valueType == typeof(double) || valueType == typeof(float))
+            try
             {
-                return TextAlignment.RIGHT;
+                pdfFormatterService.ExportToPdf(filePath, dataTable);
+                ShowExportSuccess(filePath);
             }
-            return TextAlignment.LEFT;
+            catch (Exception ex)
+            {
+                HandleError("PDF export error", ex, "Please ensure iText 7+ (namespace 'iText') is properly installed via NuGet.");
+            }
         }
 
         private string EscapeCsv(string value)
@@ -724,6 +619,7 @@ namespace InventorySystem.Services
         public void SetTitle(string newTitle)
         {
             title = newTitle ?? "Inventory Report";
+            pdfFormatterService?.SetTitle(title);
             loggingService.LogMessage("INFO", $"SetTitle: Title changed to '{title}'");
         }
 
@@ -735,6 +631,7 @@ namespace InventorySystem.Services
             pageSetupDialog?.Dispose();
             printDialog?.Dispose();
             printFont?.Dispose();
+            pdfFormatterService?.Dispose();
         }
     }
 }

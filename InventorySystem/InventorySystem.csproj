@@ -235,6 +235,7 @@
     <Compile Include="Services\DataGridViewEditService.cs" />
     <Compile Include="Services\DataLoadingService.cs" />
     <Compile Include="Services\LoggingService.cs" />
+    <Compile Include="Services\PdfFormatterService.cs" />
     <Compile Include="Services\PrintExportService.cs" />
     <Compile Include="SqlServerTypes\Loader.cs" />
     <Compile Include="ViewFrm.cs">
