@@ -7,6 +7,8 @@ using System.Drawing;
 using System.ComponentModel;
 using System.IO;
 using System.Text;
+using System.Linq;
+using System.Drawing.Imaging;
 using InventorySystem.Services;
 
 namespace InventorySystem
@@ -16,17 +18,15 @@ namespace InventorySystem
         private DatabaseService databaseService;
         private DataLoadingService dataLoadingService;
         private LoggingService loggingService;
+        private PrintExportService printExportService;
         private string currentTable = "Supplies";
         private DataTable dataTable;
+        private DataTable originalDataTable;
         private SqlDataAdapter dataAdapter;
         private bool isAdminUser = false;
+        private bool isSearchActive = false;
 
-        // Service instances
         private DataGridViewEditService editService;
-
-        // Read table names from config
-        private string SuppliesTable => ConfigurationManager.AppSettings["SuppliesTable"] ?? "SuppliesInventory";
-        private string AssetsTable => ConfigurationManager.AppSettings["AssetsTable"] ?? "AssetsInventory";
 
         public ViewFrm()
         {
@@ -35,31 +35,24 @@ namespace InventorySystem
             SetupProgressBar();
             CheckUserPermissions();
             InitializeEditService();
+            InitializePrintExportService();
         }
 
         private void InitializeServices()
         {
             try
             {
-                // Initialize logging service first
                 loggingService = new LoggingService();
-                LogMessage("SYSTEM", "Logging service initialized successfully");
-
-                // Then initialize database service
                 InitializeDatabaseService();
-
-                // Initialize data loading service
                 InitializeDataLoadingService();
             }
             catch (Exception ex)
             {
-                string errorMessage = $"Service initialization failed: {ex.Message}";
                 MessageBox.Show($"Service Initialization Error: {ex.Message}\n\nApplication will now exit.",
                               "Initialization Error",
                               MessageBoxButtons.OK,
                               MessageBoxIcon.Error);
-                Application.Exit();
-                throw;
+                Environment.Exit(1);
             }
         }
 
@@ -68,13 +61,11 @@ namespace InventorySystem
             try
             {
                 dataLoadingService = new DataLoadingService(databaseService, loggingService);
-                LogMessage("SYSTEM", "Data loading service initialized successfully");
             }
             catch (Exception ex)
             {
-                string errorMessage = $"Data loading service initialization failed: {ex.Message}";
-                LogMessage("ERROR", errorMessage);
-                throw new Exception(errorMessage, ex);
+                LogMessage("ERROR", $"Data loading service initialization failed: {ex.Message}");
+                throw new Exception($"Data loading service initialization failed: {ex.Message}", ex);
             }
         }
 
@@ -82,21 +73,13 @@ namespace InventorySystem
         {
             try
             {
-                // Check if table names are configured
-                string suppliesTable = ConfigurationManager.AppSettings["SuppliesTable"];
-                string assetsTable = ConfigurationManager.AppSettings["AssetsTable"];
-
-                if (string.IsNullOrEmpty(suppliesTable))
+                if (dataLoadingService == null)
                 {
-                    LogMessage("CONFIG", "SuppliesTable not found in config, using default");
+                    LogMessage("ERROR", "Data loading service is not initialized");
+                    return false;
                 }
 
-                if (string.IsNullOrEmpty(assetsTable))
-                {
-                    LogMessage("CONFIG", "AssetsTable not found in config, using default");
-                }
-
-                return true;
+                return dataLoadingService.ValidateConfiguration();
             }
             catch (Exception ex)
             {
@@ -109,28 +92,13 @@ namespace InventorySystem
         {
             try
             {
-                LogMessage("CONFIG", "Initializing database service...");
-
-                // Test configuration first
-                string testConnectionString = ConfigurationManager.ConnectionStrings["InventoryManagementConnection"]?.ConnectionString;
-                if (string.IsNullOrEmpty(testConnectionString))
-                {
-                    LogMessage("CONFIG", "No connection string found in config, using fallback");
-                }
-
-                // ✅ CORRECTED: Pass logging service to DatabaseService
                 databaseService = new DatabaseService(null, loggingService);
-
-                // Test connection immediately with better error handling
-                TestDatabaseConnection();
-                LogMessage("CONFIG", "Database service initialized successfully");
+                TestDatabaseConnectionDirect();
             }
             catch (Exception ex)
             {
-                string errorMessage = $"Database service initialization failed: {ex.Message}";
-                LogMessage("ERROR", errorMessage);
+                LogMessage("ERROR", $"Database service initialization failed: {ex.Message}");
 
-                // More detailed error message
                 MessageBox.Show($"Database Service Error: {ex.Message}\n\n" +
                                "Please check:\n" +
                                "1. Database server is running\n" +
@@ -140,10 +108,7 @@ namespace InventorySystem
                               "Database Error",
                               MessageBoxButtons.OK,
                               MessageBoxIcon.Error);
-
-                // Close the application if database cannot be initialized
-                Application.Exit();
-                throw;
+                Environment.Exit(1);
             }
         }
 
@@ -153,6 +118,275 @@ namespace InventorySystem
             editService.OnStatusUpdate += HandleServiceStatusUpdate;
             editService.OnError += HandleServiceError;
             editService.OnLogMessage += HandleServiceLogMessage;
+        }
+
+        private void InitializePrintExportService()
+        {
+            try
+            {
+                printExportService = new PrintExportService(dataGridView1, loggingService);
+                printExportService.SetTitle($"{currentTable} Inventory Report");
+                SetupPrintMenu();
+                SetupSaveAsMenu();
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"Print/Export service initialization failed: {ex.Message}");
+                MessageBox.Show($"Print/Export service initialization error: {ex.Message}",
+                    "Initialization Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void SetupPrintMenu()
+        {
+            printToolStripMenuItem.DropDownItems.Clear();
+
+            var printPreviewItem = new ToolStripMenuItem("Print Preview");
+            printPreviewItem.Click += (s, e) => PrintPreview();
+            printToolStripMenuItem.DropDownItems.Add(printPreviewItem);
+
+            var printItem = new ToolStripMenuItem("Print...");
+            printItem.Click += (s, e) => Print();
+            printToolStripMenuItem.DropDownItems.Add(printItem);
+
+            var pageSetupItem = new ToolStripMenuItem("Page Setup...");
+            pageSetupItem.Click += (s, e) => PageSetup();
+            printToolStripMenuItem.DropDownItems.Add(pageSetupItem);
+        }
+
+        private void SetupSaveAsMenu()
+        {
+            saveAsToolStripMenuItem.DropDownItems.Clear();
+
+            var excelItem = new ToolStripMenuItem("Export to Excel (.xlsx)");
+            excelItem.Click += (s, e) => ExportToExcel();
+            saveAsToolStripMenuItem.DropDownItems.Add(excelItem);
+
+            var csvItem = new ToolStripMenuItem("Export to CSV (.csv)");
+            csvItem.Click += (s, e) => ExportToCsv();
+            saveAsToolStripMenuItem.DropDownItems.Add(csvItem);
+
+            var pdfItem = new ToolStripMenuItem("Export to PDF (.pdf)");
+            pdfItem.Click += (s, e) => ExportToPdf();
+            saveAsToolStripMenuItem.DropDownItems.Add(pdfItem);
+
+            saveAsToolStripMenuItem.DropDownItems.Add(new ToolStripSeparator());
+
+            var imageMenu = new ToolStripMenuItem("Export to Image");
+
+            var pngItem = new ToolStripMenuItem("PNG Image (.png)");
+            pngItem.Click += (s, e) => ExportToImage(ImageFormat.Png, "PNG Image (*.png)|*.png");
+            imageMenu.DropDownItems.Add(pngItem);
+
+            var jpgItem = new ToolStripMenuItem("JPEG Image (.jpg)");
+            jpgItem.Click += (s, e) => ExportToImage(ImageFormat.Jpeg, "JPEG Image (*.jpg)|*.jpg");
+            imageMenu.DropDownItems.Add(jpgItem);
+
+            var bmpItem = new ToolStripMenuItem("Bitmap Image (.bmp)");
+            bmpItem.Click += (s, e) => ExportToImage(ImageFormat.Bmp, "Bitmap Image (*.bmp)|*.bmp");
+            imageMenu.DropDownItems.Add(bmpItem);
+
+            saveAsToolStripMenuItem.DropDownItems.Add(imageMenu);
+        }
+
+        private void PrintPreview()
+        {
+            try
+            {
+                if (dataGridView1.DataSource == null || dataGridView1.Rows.Count == 0)
+                {
+                    MessageBox.Show("No data available to print.", "Print Preview",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                UpdatePrintTitle();
+                printExportService.ShowPrintPreview();
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"Print preview error: {ex.Message}");
+                MessageBox.Show($"Print preview error: {ex.Message}", "Print Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void Print()
+        {
+            try
+            {
+                if (dataGridView1.DataSource == null || dataGridView1.Rows.Count == 0)
+                {
+                    MessageBox.Show("No data available to print.", "Print",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                UpdatePrintTitle();
+                printExportService.ShowPrintDialog();
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"Print error: {ex.Message}");
+                MessageBox.Show($"Print error: {ex.Message}", "Print Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void PageSetup()
+        {
+            try
+            {
+                printExportService.ShowPageSetup();
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"Page setup error: {ex.Message}");
+                MessageBox.Show($"Page setup error: {ex.Message}", "Page Setup Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ExportToExcel()
+        {
+            try
+            {
+                if (dataGridView1.DataSource == null || dataGridView1.Rows.Count == 0)
+                {
+                    MessageBox.Show("No data available to export.", "Export",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                using (SaveFileDialog saveDialog = new SaveFileDialog())
+                {
+                    saveDialog.Filter = "Excel Workbook (*.xlsx)|*.xlsx";
+                    saveDialog.FileName = $"{currentTable}_Inventory_{DateTime.Now:yyyyMMdd}";
+                    saveDialog.Title = "Export to Excel";
+
+                    if (saveDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        ShowLoadingState("Exporting to Excel...", 50);
+                        printExportService.ExportToExcel(saveDialog.FileName);
+                        ShowCompletedState("Excel export completed", 100);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"Excel export error: {ex.Message}");
+                ShowErrorState("Excel export failed");
+                MessageBox.Show($"Excel export error: {ex.Message}", "Export Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ExportToCsv()
+        {
+            try
+            {
+                if (dataGridView1.DataSource == null || dataGridView1.Rows.Count == 0)
+                {
+                    MessageBox.Show("No data available to export.", "Export",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                using (SaveFileDialog saveDialog = new SaveFileDialog())
+                {
+                    saveDialog.Filter = "CSV File (*.csv)|*.csv";
+                    saveDialog.FileName = $"{currentTable}_Inventory_{DateTime.Now:yyyyMMdd}";
+                    saveDialog.Title = "Export to CSV";
+
+                    if (saveDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        ShowLoadingState("Exporting to CSV...", 50);
+                        printExportService.ExportToCsv(saveDialog.FileName);
+                        ShowCompletedState("CSV export completed", 100);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"CSV export error: {ex.Message}");
+                ShowErrorState("CSV export failed");
+                MessageBox.Show($"CSV export error: {ex.Message}", "Export Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ExportToPdf()
+        {
+            try
+            {
+                if (dataGridView1.DataSource == null || dataGridView1.Rows.Count == 0)
+                {
+                    MessageBox.Show("No data available to export.", "Export",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                using (SaveFileDialog saveDialog = new SaveFileDialog())
+                {
+                    saveDialog.Filter = "PDF Document (*.pdf)|*.pdf";
+                    saveDialog.FileName = $"{currentTable}_Inventory_{DateTime.Now:yyyyMMdd}";
+                    saveDialog.Title = "Export to PDF";
+
+                    if (saveDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        ShowLoadingState("Exporting to PDF...", 50);
+                        UpdatePrintTitle();
+                        printExportService.ExportToPdf(saveDialog.FileName);
+                        ShowCompletedState("PDF export completed", 100);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowErrorState("PDF export failed");
+                MessageBox.Show($"PDF export error: {ex.Message}", "Export Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ExportToImage(ImageFormat format, string filter)
+        {
+            try
+            {
+                if (dataGridView1.DataSource == null || dataGridView1.Rows.Count == 0)
+                {
+                    MessageBox.Show("No data available to export.", "Export",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                using (SaveFileDialog saveDialog = new SaveFileDialog())
+                {
+                    saveDialog.Filter = filter;
+                    saveDialog.FileName = $"{currentTable}_Inventory_{DateTime.Now:yyyyMMdd}";
+                    saveDialog.Title = "Export to Image";
+
+                    if (saveDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        ShowLoadingState("Exporting to image...", 50);
+                        printExportService.ExportToImage(format, saveDialog.FileName);
+                        ShowCompletedState("Image export completed", 100);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"Image export error: {ex.Message}");
+                ShowErrorState("Image export failed");
+                MessageBox.Show($"Image export error: {ex.Message}", "Export Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void UpdatePrintTitle()
+        {
+            string searchSuffix = isSearchActive ? " (Filtered)" : "";
+            printExportService.SetTitle($"{currentTable} Inventory Report{searchSuffix}");
         }
 
         private void HandleServiceStatusUpdate(string message)
@@ -167,7 +401,6 @@ namespace InventorySystem
 
         private void HandleServiceLogMessage(string logEntry)
         {
-            // Optional: Handle log messages from service if needed
             System.Diagnostics.Debug.WriteLine($"Service Log: {logEntry}");
         }
 
@@ -176,10 +409,15 @@ namespace InventorySystem
             loggingService?.LogMessage(category, message);
         }
 
-        private void TestDatabaseConnection()
+        private void TestDatabaseConnectionDirect()
         {
             try
             {
+                if (databaseService == null)
+                {
+                    throw new InvalidOperationException("Database service is not initialized");
+                }
+
                 LogMessage("DATABASE", "Testing database connection...");
                 databaseService.TestConnection();
                 LogMessage("DATABASE", "Database connection test successful");
@@ -187,7 +425,25 @@ namespace InventorySystem
             catch (Exception ex)
             {
                 LogMessage("ERROR", $"Database connection test failed: {ex.Message}");
-                throw new Exception($"Database connection test failed: {ex.Message}");
+                throw new Exception($"Database connection test failed: {ex.Message}", ex);
+            }
+        }
+
+        private void TestDatabaseConnection()
+        {
+            try
+            {
+                if (dataLoadingService == null)
+                {
+                    throw new InvalidOperationException("Data loading service is not initialized");
+                }
+
+                dataLoadingService.TestDatabaseConnection();
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"Database connection test failed: {ex.Message}");
+                throw new Exception($"Database connection test failed: {ex.Message}", ex);
             }
         }
 
@@ -214,11 +470,19 @@ namespace InventorySystem
 
         private void ViewFrm_Load(object sender, EventArgs e)
         {
-            LogMessage("SYSTEM", "Application initialization started");
             CenterToScreen();
             SetupProgressBar();
-            toolStripProgressBar1.Visible = true;
-            toolStripProgressBar1.Value = 0;
+
+            if (dataLoadingService == null || databaseService == null)
+            {
+                ShowErrorState("Service initialization failed - application cannot continue");
+                MessageBox.Show("Critical services failed to initialize. The application will now close.",
+                               "Initialization Error",
+                               MessageBoxButtons.OK,
+                               MessageBoxIcon.Error);
+                this.Close();
+                return;
+            }
 
             ShowLoadingState("Validating configuration...", 5);
             if (!ValidateConfiguration())
@@ -236,7 +500,6 @@ namespace InventorySystem
             ShowCompletedState("Application ready", 100);
             UpdateDateDisplay();
             UpdateEditModeUI();
-            LogMessage("SYSTEM", "Application initialization completed successfully");
         }
 
         private void ShowLoadingState(string message, int progress)
@@ -310,10 +573,8 @@ namespace InventorySystem
             string username = LoginFrm.CurrentUsername;
             string role = LoginFrm.CurrentRole;
 
-            // ✅ Set greeting as the main menu item text
             userToolStripMenuItem.Text = $"Welcome, {username}";
 
-            // Disable edit menus for Guest users
             bool isGuest = role == "Guest";
             if (editSuppliesToolStripMenuItem != null)
                 editSuppliesToolStripMenuItem.Enabled = !isGuest && isAdminUser;
@@ -325,61 +586,64 @@ namespace InventorySystem
 
         private void LoadSuppliesData()
         {
+            if (dataLoadingService == null)
+            {
+                ShowErrorState("Data loading service not available");
+                LogMessage("ERROR", "Cannot load supplies - service not initialized");
+                return;
+            }
+
             LogMessage("DATA", "Loading supplies data...");
-            LoadTableData(SuppliesTable, "Supplies");
+            LoadTableData(dataLoadingService.GetSuppliesTableName(), "Supplies");
         }
 
         private void LoadAssetsData()
         {
+            if (dataLoadingService == null)
+            {
+                ShowErrorState("Data loading service not available");
+                LogMessage("ERROR", "Cannot load assets - service not initialized");
+                return;
+            }
+
             LogMessage("DATA", "Loading assets data...");
-            LoadTableData(AssetsTable, "Assets");
+            LoadTableData(dataLoadingService.GetAssetsTableName(), "Assets");
         }
 
         private void LoadTableData(string tableName, string tableType)
         {
+            if (dataLoadingService == null)
+            {
+                ShowErrorState("Data loading service not available");
+                MessageBox.Show("Cannot load data - service not initialized",
+                               "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             try
             {
-                // Use DataLoadingService to load table data
                 dataTable = dataLoadingService.LoadTableData(tableName, tableType, ShowLoadingState);
-
-                // Create data adapter for updates using DataLoadingService
+                originalDataTable = dataTable.Copy();
                 dataAdapter = dataLoadingService.CreateDataAdapter(tableName);
 
-                // Initialize the edit service with the loaded data
                 editService.InitializeData(dataTable, dataAdapter);
 
-                // Set up DataGridView
                 dataGridView1.DataSource = null;
                 dataGridView1.AutoGenerateColumns = true;
                 dataGridView1.DataSource = dataTable;
-                dataGridView1.ReadOnly = true; // Start in read-only mode
+                dataGridView1.ReadOnly = true;
 
                 currentTable = tableType;
+                UpdatePrintTitle();
                 AdjustFormWidth();
 
-                string successMessage = $"{tableType} data loaded successfully - {dataTable.Rows.Count} records";
+                string successMessage = $"{tableType} data loaded - {dataTable.Rows.Count} records";
                 ShowCompletedState(successMessage, 100);
-                LogMessage("DATA", successMessage);
-            }
-            catch (SqlException sqlEx)
-            {
-                string errorMessage = $"Database error loading {tableType} data: {sqlEx.Message}";
-                ShowErrorState($"Database error: {sqlEx.Message}");
-                LogMessage("ERROR", errorMessage);
-                MessageBox.Show(errorMessage, "Database Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            catch (InvalidOperationException ioEx)
-            {
-                string errorMessage = $"Configuration error loading {tableType} data: {ioEx.Message}";
-                ShowErrorState($"Configuration error: {ioEx.Message}");
-                LogMessage("ERROR", errorMessage);
-                MessageBox.Show(errorMessage, "Configuration Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch (Exception ex)
             {
-                string errorMessage = $"Error loading {tableType} data from table '{tableName}': {ex.Message}";
+                string errorMessage = $"Error loading {tableType} data: {ex.Message}";
                 ShowErrorState($"Error loading {tableType} data");
-                LogMessage("ERROR", errorMessage);
                 MessageBox.Show(errorMessage, "Data Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -417,18 +681,15 @@ namespace InventorySystem
         {
             bool isEditMode = editService.IsEditMode;
 
-            // Update context menu items based on permissions and mode
             addNewToolStripMenuItem.Enabled = isAdminUser && isEditMode;
             editSelectedToolStripMenuItem.Enabled = isAdminUser && isEditMode;
             deleteSelectedToolStripMenuItem.Enabled = isAdminUser && isEditMode;
             saveChangesToolStripMenuItem.Enabled = isAdminUser && isEditMode;
             cancelChangesToolStripMenuItem.Enabled = isAdminUser && isEditMode;
 
-            // Update main menu items
             editSuppliesToolStripMenuItem.Enabled = isAdminUser;
             editAssetsToolStripMenuItem.Enabled = isAdminUser;
 
-            // Update form title to indicate edit mode
             this.Text = isEditMode ?
                 $"Inventory Management System - EDIT MODE ({currentTable})" :
                 "Inventory Management System";
@@ -454,7 +715,66 @@ namespace InventorySystem
             editService.DeleteSelectedRecord();
         }
 
-        // Event Handlers
+        private void PerformSearch(string searchText)
+        {
+            if (dataLoadingService == null || originalDataTable == null ||
+                string.IsNullOrWhiteSpace(searchText) || searchText == "Search...")
+            {
+                if (originalDataTable != null)
+                {
+                    dataTable.Clear();
+                    foreach (DataRow row in originalDataTable.Rows)
+                    {
+                        dataTable.ImportRow(row);
+                    }
+                    isSearchActive = false;
+                    toolStripStatusLabel1.Text = $"Displaying all {dataTable.Rows.Count} records";
+                    UpdatePrintTitle();
+                }
+                return;
+            }
+
+            try
+            {
+                DataTable filteredTable = dataLoadingService.PerformSearch(originalDataTable, searchText);
+
+                dataTable.Clear();
+                foreach (DataRow row in filteredTable.Rows)
+                {
+                    dataTable.ImportRow(row);
+                }
+
+                isSearchActive = true;
+                toolStripStatusLabel1.Text = $"Found {dataTable.Rows.Count} records matching '{searchText}'";
+                UpdatePrintTitle();
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"Search error: {ex.Message}");
+                MessageBox.Show($"Search error: {ex.Message}", "Search Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ClearSearch()
+        {
+            searchToolStripTextBox.Text = "Search...";
+            searchToolStripTextBox.ForeColor = Color.Gray;
+
+            if (dataLoadingService != null && originalDataTable != null)
+            {
+                DataTable clearedTable = dataLoadingService.ClearSearch(originalDataTable);
+                dataTable.Clear();
+                foreach (DataRow row in clearedTable.Rows)
+                {
+                    dataTable.ImportRow(row);
+                }
+                isSearchActive = false;
+                toolStripStatusLabel1.Text = $"Displaying all {dataTable.Rows.Count} records";
+                UpdatePrintTitle();
+            }
+        }
+
         private void logoutToolStripMenuItem_Click(object sender, EventArgs e)
         {
             LogMessage("USER", "Logout initiated");
@@ -490,6 +810,7 @@ namespace InventorySystem
 
             ShowLoadingState("Loading supplies table...", 10);
             DisableEditMode();
+            ClearSearch();
             LoadSuppliesData();
         }
 
@@ -500,6 +821,7 @@ namespace InventorySystem
 
             ShowLoadingState("Loading assets table...", 10);
             DisableEditMode();
+            ClearSearch();
             LoadAssetsData();
         }
 
@@ -509,6 +831,7 @@ namespace InventorySystem
             if (currentTable != "Supplies")
             {
                 if (editService.CheckForUnsavedChanges()) return;
+                ClearSearch();
                 LoadSuppliesData();
             }
             EnableEditMode();
@@ -520,6 +843,7 @@ namespace InventorySystem
             if (currentTable != "Assets")
             {
                 if (editService.CheckForUnsavedChanges()) return;
+                ClearSearch();
                 LoadAssetsData();
             }
             EnableEditMode();
@@ -527,164 +851,158 @@ namespace InventorySystem
 
         private void refreshToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            if (dataLoadingService == null)
+            {
+                MessageBox.Show("Data service is not available", "Error",
+                               MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
             LogMessage("DATA", "Manual refresh requested");
             if (editService.CheckForUnsavedChanges()) return;
-            RefreshData();
-        }
 
-        private void RefreshData()
-        {
+            ShowLoadingState("Refreshing data...", 10);
+            ClearSearch();
+
             try
             {
-                // Use DataLoadingService for refresh operation
-                dataLoadingService.RefreshData(currentTable, SuppliesTable, AssetsTable, ShowLoadingState);
+                dataLoadingService.RefreshData(currentTable,
+                    dataLoadingService.GetSuppliesTableName(),
+                    dataLoadingService.GetAssetsTableName(),
+                    ShowLoadingState);
 
-                // Reload the current table data
-                if (currentTable == "Assets")
-                {
-                    LoadAssetsData();
-                }
-                else
+                if (currentTable == "Supplies")
                 {
                     LoadSuppliesData();
                 }
-
-                UpdateDateDisplay();
-                ShowCompletedState("Data refreshed successfully", 100);
-                LogMessage("DATA", "Data refresh completed successfully");
-            }
-            catch (SqlException sqlEx)
-            {
-                string errorMessage = $"Connection failed: {sqlEx.Message}";
-                ShowErrorState($"Connection failed: {sqlEx.Message}");
-                LogMessage("ERROR", errorMessage);
-                MessageBox.Show($"Database connection error: {sqlEx.Message}",
-                              "Connection Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                else
+                {
+                    LoadAssetsData();
+                }
             }
             catch (Exception ex)
             {
-                string errorMessage = $"Refresh failed: {ex.Message}";
+                LogMessage("ERROR", $"Refresh failed: {ex.Message}");
                 ShowErrorState($"Refresh failed: {ex.Message}");
-                LogMessage("ERROR", errorMessage);
-                MessageBox.Show($"Error during refresh: {ex.Message}",
-                              "Refresh Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Refresh failed: {ex.Message}", "Refresh Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
         private void changePasswordToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LogMessage("FEATURE", "Change password feature accessed (not implemented)");
-            MessageBox.Show("Password change functionality to be implemented.",
-                          "Feature Coming Soon",
-                          MessageBoxButtons.OK,
-                          MessageBoxIcon.Information);
+            LogMessage("USER", "Change password requested");
+            MessageBox.Show("Password change functionality will be available in the next update.",
+                           "Feature Coming Soon",
+                           MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        // Context Menu Event Handlers
+        private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+        }
+
+        private void dataGridView1_DataError(object sender, DataGridViewDataErrorEventArgs e)
+        {
+            LogMessage("ERROR", $"DataGridView error: {e.Exception.Message}");
+            MessageBox.Show($"Data error: {e.Exception.Message}", "Data Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            e.ThrowException = false;
+        }
+
+        private void dataGridView1_SelectionChanged(object sender, EventArgs e)
+        {
+        }
+
+        private void contextMenuStrip1_Opening(object sender, CancelEventArgs e)
+        {
+            bool hasSelection = dataGridView1.SelectedRows.Count > 0;
+            editSelectedToolStripMenuItem.Enabled = hasSelection && isAdminUser && editService.IsEditMode;
+            deleteSelectedToolStripMenuItem.Enabled = hasSelection && isAdminUser && editService.IsEditMode;
+        }
+
         private void addNewToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LogMessage("CONTEXT", "Add new record via context menu");
             AddNewRecord();
         }
 
         private void editSelectedToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LogMessage("CONTEXT", "Edit selected via context menu");
-            if (dataGridView1.SelectedRows.Count > 0 && !editService.IsEditMode)
-            {
-                EnableEditMode();
-            }
         }
 
         private void deleteSelectedToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LogMessage("CONTEXT", "Delete selected via context menu");
             DeleteSelectedRecord();
         }
 
         private void saveChangesToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LogMessage("CONTEXT", "Save changes via context menu");
-            SaveChangesToDatabase();
+            if (SaveChangesToDatabase())
+            {
+                ShowCompletedState("Changes saved successfully", 100);
+                ClearSearch();
+            }
         }
 
         private void cancelChangesToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LogMessage("CONTEXT", "Cancel changes via context menu");
             DiscardChanges();
-        }
-
-        private void contextMenuStrip1_Opening(object sender, CancelEventArgs e)
-        {
-            // Update context menu item states based on current selection and permissions
-            bool hasSelection = dataGridView1.SelectedRows.Count > 0;
-            bool hasChanges = editService.HasUnsavedChanges();
-
-            editSelectedToolStripMenuItem.Enabled = isAdminUser && editService.IsEditMode && hasSelection;
-            deleteSelectedToolStripMenuItem.Enabled = isAdminUser && editService.IsEditMode && hasSelection;
-            saveChangesToolStripMenuItem.Enabled = isAdminUser && editService.IsEditMode && hasChanges;
-            cancelChangesToolStripMenuItem.Enabled = isAdminUser && editService.IsEditMode && hasChanges;
-        }
-
-        private void dataGridView1_SelectionChanged(object sender, EventArgs e)
-        {
-            int selectedCount = dataGridView1.SelectedRows.Count;
-            if (selectedCount > 0)
-            {
-                toolStripStatusLabel1.Text = $"{selectedCount} row(s) selected";
-            }
-        }
-
-        private void dataGridView1_DataError(object sender, DataGridViewDataErrorEventArgs e)
-        {
-            string errorMessage = $"Data error in cell: {e.Exception.Message}";
-            ShowErrorState($"Data error in cell: {e.Exception.Message}");
-            LogMessage("ERROR", errorMessage);
-            MessageBox.Show($"Data error: {e.Exception.Message}\n\nPlease check your input and try again.",
-                          "Data Error",
-                          MessageBoxButtons.OK,
-                          MessageBoxIcon.Error);
-            e.ThrowException = false;
-        }
-
-        private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
-        {
-            // Handle any special cell content clicks if needed
+            ClearSearch();
         }
 
         private void ViewFrm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            LogMessage("SYSTEM", "Form closing event triggered");
-            if (editService.CheckForUnsavedChanges())
+            if (e.CloseReason == CloseReason.UserClosing)
             {
-                e.Cancel = true; // Cancel closing if there are unsaved changes
-                LogMessage("SYSTEM", "Form closing cancelled due to unsaved changes");
-                return;
+                if (editService.CheckForUnsavedChanges())
+                {
+                    e.Cancel = true;
+                    return;
+                }
             }
 
-            // Log application closure
-            if (!e.Cancel)
-            {
-                LogMessage("SYSTEM", "Application closed successfully");
-                loggingService?.LogSessionEnd();
+            printExportService?.Dispose();
+            LogMessage("SYSTEM", "Application closing");
+        }
 
-                // Dispose services
-                databaseService?.Dispose();
-                dataLoadingService = null; // DataLoadingService doesn't implement IDisposable
-                loggingService?.Dispose();
+        private void searchToolStripTextBox_Enter(object sender, EventArgs e)
+        {
+            if (searchToolStripTextBox.Text == "Search...")
+            {
+                searchToolStripTextBox.Text = "";
+                searchToolStripTextBox.ForeColor = Color.Black;
             }
         }
 
-        private void viewLogsToolStripMenuItem_Click(object sender, EventArgs e)
+        private void searchToolStripTextBox_Leave(object sender, EventArgs e)
         {
-            try
+            if (string.IsNullOrWhiteSpace(searchToolStripTextBox.Text))
             {
-                loggingService?.OpenLogFile();
+                searchToolStripTextBox.Text = "Search...";
+                searchToolStripTextBox.ForeColor = Color.Gray;
             }
-            catch (Exception ex)
+        }
+
+        private void searchToolStripTextBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter)
             {
-                MessageBox.Show($"Error opening log file: {ex.Message}", "Error",
-                              MessageBoxButtons.OK, MessageBoxIcon.Error);
+                PerformSearch(searchToolStripTextBox.Text);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.Escape)
+            {
+                ClearSearch();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        }
+
+        private void searchToolStripTextBox_TextChanged(object sender, EventArgs e)
+        {
+            if (searchToolStripTextBox.Text != "Search..." && !string.IsNullOrWhiteSpace(searchToolStripTextBox.Text))
+            {
+                PerformSearch(searchToolStripTextBox.Text);
             }
         }
     }

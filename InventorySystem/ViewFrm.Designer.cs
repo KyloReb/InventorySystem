@@ -34,6 +34,8 @@
             this.displayAssetsTableToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.editAssetsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.refreshToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.printToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.searchToolStripTextBox = new System.Windows.Forms.ToolStripTextBox();
             this.dataGridView1 = new System.Windows.Forms.DataGridView();
             this.contextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.addNewToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -42,11 +44,13 @@
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
             this.saveChangesToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.cancelChangesToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.saveAsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.statusStrip1.SuspendLayout();
             this.menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).BeginInit();
             this.contextMenuStrip1.SuspendLayout();
             this.SuspendLayout();
+
             // 
             // statusStrip1
             // 
@@ -74,14 +78,16 @@
             // 
             // toolStripStatusLabel1
             // 
+            this.toolStripStatusLabel1.AutoSize = false;
             this.toolStripStatusLabel1.BorderSides = ((System.Windows.Forms.ToolStripStatusLabelBorderSides)((((System.Windows.Forms.ToolStripStatusLabelBorderSides.Left | System.Windows.Forms.ToolStripStatusLabelBorderSides.Top) 
             | System.Windows.Forms.ToolStripStatusLabelBorderSides.Right) 
             | System.Windows.Forms.ToolStripStatusLabelBorderSides.Bottom)));
             this.toolStripStatusLabel1.BorderStyle = System.Windows.Forms.Border3DStyle.SunkenInner;
             this.toolStripStatusLabel1.Name = "toolStripStatusLabel1";
-            this.toolStripStatusLabel1.Size = new System.Drawing.Size(54, 24);
+            this.toolStripStatusLabel1.Size = new System.Drawing.Size(240, 24);
             this.toolStripStatusLabel1.Text = "Ready";
             this.toolStripStatusLabel1.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
+            this.toolStripStatusLabel1.ToolTipText = "Status information";
             // 
             // toolStripProgressBar1
             // 
@@ -97,10 +103,13 @@
             this.userToolStripMenuItem,
             this.suppliesToolStripMenuItem,
             this.assetsToolStripMenuItem,
-            this.refreshToolStripMenuItem});
+            this.saveAsToolStripMenuItem,
+            this.printToolStripMenuItem,
+            this.refreshToolStripMenuItem,
+            this.searchToolStripTextBox});
             this.menuStrip1.Location = new System.Drawing.Point(0, 0);
             this.menuStrip1.Name = "menuStrip1";
-            this.menuStrip1.Size = new System.Drawing.Size(1045, 28);
+            this.menuStrip1.Size = new System.Drawing.Size(1045, 31);
             this.menuStrip1.TabIndex = 1;
             this.menuStrip1.Text = "menuStrip1";
             // 
@@ -111,7 +120,7 @@
             this.logoutToolStripMenuItem,
             this.exitToolStripMenuItem});
             this.userToolStripMenuItem.Name = "userToolStripMenuItem";
-            this.userToolStripMenuItem.Size = new System.Drawing.Size(52, 24);
+            this.userToolStripMenuItem.Size = new System.Drawing.Size(52, 27);
             this.userToolStripMenuItem.Text = "User";
             // 
             // changePasswordToolStripMenuItem
@@ -141,7 +150,7 @@
             this.displaySuppliesTableToolStripMenuItem,
             this.editSuppliesToolStripMenuItem});
             this.suppliesToolStripMenuItem.Name = "suppliesToolStripMenuItem";
-            this.suppliesToolStripMenuItem.Size = new System.Drawing.Size(79, 24);
+            this.suppliesToolStripMenuItem.Size = new System.Drawing.Size(79, 27);
             this.suppliesToolStripMenuItem.Text = "Supplies";
             // 
             // displaySuppliesTableToolStripMenuItem
@@ -164,7 +173,7 @@
             this.displayAssetsTableToolStripMenuItem,
             this.editAssetsToolStripMenuItem});
             this.assetsToolStripMenuItem.Name = "assetsToolStripMenuItem";
-            this.assetsToolStripMenuItem.Size = new System.Drawing.Size(64, 24);
+            this.assetsToolStripMenuItem.Size = new System.Drawing.Size(64, 27);
             this.assetsToolStripMenuItem.Text = "Assets";
             // 
             // displayAssetsTableToolStripMenuItem
@@ -184,9 +193,27 @@
             // refreshToolStripMenuItem
             // 
             this.refreshToolStripMenuItem.Name = "refreshToolStripMenuItem";
-            this.refreshToolStripMenuItem.Size = new System.Drawing.Size(72, 24);
+            this.refreshToolStripMenuItem.Size = new System.Drawing.Size(72, 27);
             this.refreshToolStripMenuItem.Text = "Refresh";
             this.refreshToolStripMenuItem.Click += new System.EventHandler(this.refreshToolStripMenuItem_Click);
+            // 
+            // printToolStripMenuItem
+            // 
+            this.printToolStripMenuItem.Name = "printToolStripMenuItem";
+            this.printToolStripMenuItem.Size = new System.Drawing.Size(53, 27);
+            this.printToolStripMenuItem.Text = "Print";
+            // 
+            // searchToolStripTextBox
+            // 
+            this.searchToolStripTextBox.Font = new System.Drawing.Font("Segoe UI", 9F);
+            this.searchToolStripTextBox.Name = "searchToolStripTextBox";
+            this.searchToolStripTextBox.Size = new System.Drawing.Size(400, 27);
+            this.searchToolStripTextBox.Text = "Search...";
+            this.searchToolStripTextBox.ToolTipText = "Enter search text and press Enter";
+            this.searchToolStripTextBox.Enter += new System.EventHandler(this.searchToolStripTextBox_Enter);
+            this.searchToolStripTextBox.Leave += new System.EventHandler(this.searchToolStripTextBox_Leave);
+            this.searchToolStripTextBox.KeyDown += new System.Windows.Forms.KeyEventHandler(this.searchToolStripTextBox_KeyDown);
+            this.searchToolStripTextBox.TextChanged += new System.EventHandler(this.searchToolStripTextBox_TextChanged);
             // 
             // dataGridView1
             // 
@@ -195,12 +222,12 @@
             this.dataGridView1.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             this.dataGridView1.ContextMenuStrip = this.contextMenuStrip1;
             this.dataGridView1.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.dataGridView1.Location = new System.Drawing.Point(0, 28);
+            this.dataGridView1.Location = new System.Drawing.Point(0, 31);
             this.dataGridView1.Name = "dataGridView1";
             this.dataGridView1.ReadOnly = true;
             this.dataGridView1.RowHeadersWidth = 51;
             this.dataGridView1.RowTemplate.Height = 24;
-            this.dataGridView1.Size = new System.Drawing.Size(1045, 396);
+            this.dataGridView1.Size = new System.Drawing.Size(1045, 393);
             this.dataGridView1.TabIndex = 2;
             this.dataGridView1.CellContentClick += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridView1_CellContentClick);
             this.dataGridView1.DataError += new System.Windows.Forms.DataGridViewDataErrorEventHandler(this.dataGridView1_DataError);
@@ -260,6 +287,12 @@
             this.cancelChangesToolStripMenuItem.Text = "Cancel Changes";
             this.cancelChangesToolStripMenuItem.Click += new System.EventHandler(this.cancelChangesToolStripMenuItem_Click);
             // 
+            // saveAsToolStripMenuItem
+            // 
+            this.saveAsToolStripMenuItem.Name = "saveAsToolStripMenuItem";
+            this.saveAsToolStripMenuItem.Size = new System.Drawing.Size(72, 27);
+            this.saveAsToolStripMenuItem.Text = "Save as";
+            // 
             // ViewFrm
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 16F);
@@ -287,6 +320,7 @@
 
         #endregion
 
+
         private System.Windows.Forms.StatusStrip statusStrip1;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel1;
         private System.Windows.Forms.ToolStripProgressBar toolStripProgressBar1;
@@ -311,5 +345,8 @@
         private System.Windows.Forms.ToolStripMenuItem saveChangesToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem cancelChangesToolStripMenuItem;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
+        private System.Windows.Forms.ToolStripTextBox searchToolStripTextBox;
+        private System.Windows.Forms.ToolStripMenuItem printToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem saveAsToolStripMenuItem;
     }
 }

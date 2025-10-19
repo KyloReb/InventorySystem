@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
+using System.Linq;
 using System.Windows.Forms;
 using InventorySystem.Services;
 
@@ -10,15 +12,21 @@ namespace InventorySystem.Services
     {
         private readonly DatabaseService _databaseService;
         private readonly LoggingService _loggingService;
+        private readonly bool _isInitialized = false;
 
         public DataLoadingService(DatabaseService databaseService, LoggingService loggingService)
         {
             _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
             _loggingService = loggingService ?? throw new ArgumentNullException(nameof(loggingService));
+            _isInitialized = true;
         }
+
+        public bool IsInitialized => _isInitialized;
 
         public DataTable LoadTableData(string tableName, string tableType, Action<string, int> progressCallback = null)
         {
+            ValidateInitialization();
+
             try
             {
                 progressCallback?.Invoke($"Loading {tableType.ToLower()} data...", 40);
@@ -71,6 +79,8 @@ namespace InventorySystem.Services
 
         public SqlDataAdapter CreateDataAdapter(string tableName)
         {
+            ValidateInitialization();
+
             try
             {
                 return _databaseService.CreateTableDataAdapter(tableName);
@@ -84,6 +94,8 @@ namespace InventorySystem.Services
 
         public void RefreshData(string currentTable, string suppliesTable, string assetsTable, Action<string, int> progressCallback = null)
         {
+            ValidateInitialization();
+
             try
             {
                 progressCallback?.Invoke("Testing database connection...", 15);
@@ -97,7 +109,6 @@ namespace InventorySystem.Services
                 string tableName = currentTable == "Assets" ? assetsTable : suppliesTable;
                 string tableType = currentTable == "Assets" ? "Assets" : "Supplies";
 
-                // This would typically return data, but for refresh we just validate
                 progressCallback?.Invoke($"{tableType} data refreshed successfully", 100);
                 _loggingService.LogMessage("DATA", "Data refresh completed successfully");
             }
@@ -117,6 +128,8 @@ namespace InventorySystem.Services
 
         public bool ValidateTableExists(string tableName)
         {
+            ValidateInitialization();
+
             try
             {
                 return _databaseService.TableExists(tableName);
@@ -130,6 +143,8 @@ namespace InventorySystem.Services
 
         public int GetRecordCount(string tableName)
         {
+            ValidateInitialization();
+
             try
             {
                 var dataTable = _databaseService.GetTableData(tableName);
@@ -139,6 +154,112 @@ namespace InventorySystem.Services
             {
                 _loggingService.LogMessage("ERROR", $"Error getting record count for '{tableName}': {ex.Message}");
                 return -1;
+            }
+        }
+
+        public bool TestDatabaseConnection()
+        {
+            ValidateInitialization();
+
+            try
+            {
+                _loggingService.LogMessage("DATABASE", "Testing database connection...");
+                _databaseService.TestConnection();
+                _loggingService.LogMessage("DATABASE", "Database connection test successful");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogMessage("ERROR", $"Database connection test failed: {ex.Message}");
+                throw new Exception($"Database connection test failed: {ex.Message}", ex);
+            }
+        }
+
+        public bool ValidateConfiguration()
+        {
+            ValidateInitialization();
+
+            try
+            {
+                string suppliesTable = ConfigurationManager.AppSettings["SuppliesTable"];
+                string assetsTable = ConfigurationManager.AppSettings["AssetsTable"];
+
+                if (string.IsNullOrEmpty(suppliesTable))
+                {
+                    _loggingService.LogMessage("CONFIG", "SuppliesTable not found in config, using default");
+                }
+
+                if (string.IsNullOrEmpty(assetsTable))
+                {
+                    _loggingService.LogMessage("CONFIG", "AssetsTable not found in config, using default");
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogMessage("ERROR", $"Configuration validation failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        public string GetSuppliesTableName()
+        {
+            ValidateInitialization();
+            return ConfigurationManager.AppSettings["SuppliesTable"] ?? "SuppliesInventory";
+        }
+
+        public string GetAssetsTableName()
+        {
+            ValidateInitialization();
+            return ConfigurationManager.AppSettings["AssetsTable"] ?? "AssetsInventory";
+        }
+
+        public DataTable PerformSearch(DataTable originalDataTable, string searchText)
+        {
+            ValidateInitialization();
+
+            if (originalDataTable == null || string.IsNullOrWhiteSpace(searchText) || searchText == "Search...")
+            {
+                return originalDataTable?.Copy() ?? new DataTable();
+            }
+
+            try
+            {
+                searchText = searchText.ToLower();
+                DataTable filteredTable = originalDataTable.Clone();
+
+                var filteredRows = originalDataTable.AsEnumerable()
+                    .Where(row => row.ItemArray.Any(field =>
+                        field != null && field.ToString().ToLower().Contains(searchText)))
+                    .ToArray();
+
+                foreach (DataRow row in filteredRows)
+                {
+                    filteredTable.ImportRow(row);
+                }
+
+                _loggingService.LogMessage("SEARCH", $"Search performed: '{searchText}' - {filteredTable.Rows.Count} results found");
+                return filteredTable;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogMessage("ERROR", $"Search error: {ex.Message}");
+                throw new Exception($"Search error: {ex.Message}", ex);
+            }
+        }
+
+        public DataTable ClearSearch(DataTable originalDataTable)
+        {
+            ValidateInitialization();
+            return originalDataTable?.Copy() ?? new DataTable();
+        }
+
+        private void ValidateInitialization()
+        {
+            if (!_isInitialized)
+            {
+                throw new InvalidOperationException("DataLoadingService is not properly initialized");
             }
         }
     }
