@@ -19,7 +19,7 @@ namespace InventorySystem
         private DataLoadingService dataLoadingService;
         private LoggingService loggingService;
         private PrintExportService printExportService;
-        private AuthService authService; // Added AuthService
+        private AuthService authService;
 
         private string currentTable = "Supplies";
         private DataTable dataTable;
@@ -39,7 +39,7 @@ namespace InventorySystem
             CheckUserPermissions();
             InitializeEditService();
             InitializePrintExportService();
-            UpdateMenuVisibility(); // Added to control menu visibility based on role
+            UpdateMenuVisibility();
         }
 
         private void InitializeServices()
@@ -49,7 +49,7 @@ namespace InventorySystem
                 loggingService = new LoggingService();
                 InitializeDatabaseService();
                 InitializeDataLoadingService();
-                InitializeAuthService(); // Added AuthService initialization
+                InitializeAuthService();
             }
             catch (Exception ex)
             {
@@ -158,10 +158,7 @@ namespace InventorySystem
 
         private void UpdateMenuVisibility()
         {
-            // Only show Manage Accounts menu for admin users
             manageAccntsToolStripMenuItem.Visible = isAdminUser;
-
-            // Hide logout and change password for guest users
             logoutToolStripMenuItem.Visible = !isGuestUser;
             changePasswordToolStripMenuItem.Visible = !isGuestUser;
         }
@@ -999,8 +996,10 @@ namespace InventorySystem
 
                         ShowLoadingState("Changing password...", 50);
 
-                        // Use AuthService for password change
-                        if (authService.ChangeUserPassword(username, currentPassword, newPassword))
+                        // Use AuthService for password change with improved error handling
+                        bool passwordChanged = authService.ChangeUserPassword(username, currentPassword, newPassword);
+
+                        if (passwordChanged)
                         {
                             ShowCompletedState("Password changed successfully", 100);
                             MessageBox.Show("Password changed successfully!", "Success",
@@ -1017,11 +1016,25 @@ namespace InventorySystem
                     }
                 }
             }
+            catch (SqlException sqlEx)
+            {
+                LogMessage("ERROR", $"Database error during password change: {sqlEx.Message}");
+                ShowErrorState("Database error during password change");
+                MessageBox.Show($"A database error occurred: {sqlEx.Message}\n\nPlease try again.",
+                    "Database Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            catch (InvalidOperationException ioEx) when (ioEx.Message.Contains("connection"))
+            {
+                LogMessage("ERROR", $"Connection error during password change: {ioEx.Message}");
+                ShowErrorState("Connection error during password change");
+                MessageBox.Show($"A connection error occurred: {ioEx.Message}\n\nPlease check your database connection and try again.",
+                    "Connection Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
             catch (Exception ex)
             {
                 LogMessage("ERROR", $"Change password error: {ex.Message}");
                 ShowErrorState("Password change error");
-                MessageBox.Show($"An error occurred while changing password: {ex.Message}",
+                MessageBox.Show($"An unexpected error occurred while changing password: {ex.Message}",
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -1138,19 +1151,21 @@ namespace InventorySystem
         }
     }
 
-    // Change Password Dialog (unchanged from your original)
+    // Enhanced Change Password Dialog with better validation
     public class ChangePasswordDialog : Form
     {
         private TextBox txtUsername;
         private TextBox txtCurrentPassword;
         private TextBox txtNewPassword;
+        private TextBox txtConfirmPassword;
         private Button btnConfirm;
         private Button btnCancel;
         private Label lblUsername;
         private Label lblCurrentPassword;
         private Label lblNewPassword;
+        private Label lblConfirmPassword;
 
-        public string Username => txtUsername.Text;
+        public string Username => txtUsername.Text.Trim();
         public string CurrentPassword => txtCurrentPassword.Text;
         public string NewPassword => txtNewPassword.Text;
 
@@ -1161,7 +1176,7 @@ namespace InventorySystem
 
         private void InitializeComponent()
         {
-            this.Size = new Size(350, 250);
+            this.Size = new Size(350, 300);
             this.Text = "Change Password";
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
@@ -1177,64 +1192,80 @@ namespace InventorySystem
             lblNewPassword = new Label { Text = "New Password:", Location = new Point(20, 100), Size = new Size(100, 20) };
             txtNewPassword = new TextBox { Location = new Point(120, 100), Size = new Size(180, 20), UseSystemPasswordChar = true };
 
-            btnConfirm = new Button { Text = "Confirm", Location = new Point(120, 150), Size = new Size(80, 30), DialogResult = DialogResult.OK };
-            btnCancel = new Button { Text = "Cancel", Location = new Point(220, 150), Size = new Size(80, 30), DialogResult = DialogResult.Cancel };
+            lblConfirmPassword = new Label { Text = "Confirm Password:", Location = new Point(20, 140), Size = new Size(100, 20) };
+            txtConfirmPassword = new TextBox { Location = new Point(120, 140), Size = new Size(180, 20), UseSystemPasswordChar = true };
 
-            btnConfirm.Click += (s, e) => { if (ValidateInput()) this.DialogResult = DialogResult.OK; };
-            btnCancel.Click += (s, e) => this.DialogResult = DialogResult.Cancel;
+            btnConfirm = new Button { Text = "Confirm", Location = new Point(120, 190), Size = new Size(80, 30) };
+            btnCancel = new Button { Text = "Cancel", Location = new Point(220, 190), Size = new Size(80, 30) };
+
+            btnConfirm.Click += (s, e) => ValidateAndConfirm();
+            btnCancel.Click += (s, e) => { this.DialogResult = DialogResult.Cancel; this.Close(); };
 
             this.Controls.AddRange(new Control[] {
                 lblUsername, txtUsername,
                 lblCurrentPassword, txtCurrentPassword,
                 lblNewPassword, txtNewPassword,
+                lblConfirmPassword, txtConfirmPassword,
                 btnConfirm, btnCancel
             });
 
-            this.AcceptButton = btnConfirm;
-            this.CancelButton = btnCancel;
+            // Auto-populate username if available
+            if (!string.IsNullOrEmpty(LoginFrm.CurrentUsername))
+            {
+                txtUsername.Text = LoginFrm.CurrentUsername;
+                txtUsername.ReadOnly = true;
+                txtUsername.BackColor = SystemColors.Control;
+            }
         }
 
-        private bool ValidateInput()
+        private void ValidateAndConfirm()
         {
-<<<<<<< HEAD
-            if (string.IsNullOrWhiteSpace(txtUsername.Text) ||
-                string.IsNullOrWhiteSpace(txtCurrentPassword.Text) ||
-                string.IsNullOrWhiteSpace(txtNewPassword.Text))
-            {
-                MessageBox.Show("Please fill in all fields.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-=======
             if (string.IsNullOrWhiteSpace(txtUsername.Text))
             {
-                MessageBox.Show("Please enter username.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
+                MessageBox.Show("Please enter your username.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtUsername.Focus();
+                return;
             }
 
             if (string.IsNullOrWhiteSpace(txtCurrentPassword.Text))
             {
-                MessageBox.Show("Please enter current password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
+                MessageBox.Show("Please enter your current password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtCurrentPassword.Focus();
+                return;
             }
 
             if (string.IsNullOrWhiteSpace(txtNewPassword.Text))
             {
-                MessageBox.Show("Please enter new password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
->>>>>>> d2b31c0648712e88d0d38d3b2bf507dd2afb8d7f
-                return false;
+                MessageBox.Show("Please enter a new password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtNewPassword.Focus();
+                return;
             }
 
-            if (txtNewPassword.Text.Length < 4)
+            if (txtNewPassword.Text.Length < 6)
             {
-<<<<<<< HEAD
-                MessageBox.Show("New password must be at least 4 characters long.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-=======
-                MessageBox.Show("New password must be at least 4 characters long.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
->>>>>>> d2b31c0648712e88d0d38d3b2bf507dd2afb8d7f
-                return false;
+                MessageBox.Show("New password must be at least 6 characters long.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtNewPassword.Focus();
+                return;
             }
 
-            return true;
+            if (txtNewPassword.Text != txtConfirmPassword.Text)
+            {
+                MessageBox.Show("New password and confirmation password do not match.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtConfirmPassword.Focus();
+                txtConfirmPassword.SelectAll();
+                return;
+            }
+
+            if (txtNewPassword.Text == txtCurrentPassword.Text)
+            {
+                MessageBox.Show("New password must be different from current password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                txtNewPassword.Focus();
+                txtNewPassword.SelectAll();
+                return;
+            }
+
+            this.DialogResult = DialogResult.OK;
+            this.Close();
         }
     }
 }
