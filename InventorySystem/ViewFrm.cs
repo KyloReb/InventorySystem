@@ -19,6 +19,8 @@ namespace InventorySystem
         private DataLoadingService dataLoadingService;
         private LoggingService loggingService;
         private PrintExportService printExportService;
+        private AuthService authService; // Added AuthService
+
         private string currentTable = "Supplies";
         private DataTable dataTable;
         private DataTable originalDataTable;
@@ -36,6 +38,7 @@ namespace InventorySystem
             CheckUserPermissions();
             InitializeEditService();
             InitializePrintExportService();
+            UpdateMenuVisibility(); // Added to control menu visibility based on role
         }
 
         private void InitializeServices()
@@ -45,6 +48,7 @@ namespace InventorySystem
                 loggingService = new LoggingService();
                 InitializeDatabaseService();
                 InitializeDataLoadingService();
+                InitializeAuthService(); // Added AuthService initialization
             }
             catch (Exception ex)
             {
@@ -53,6 +57,20 @@ namespace InventorySystem
                               MessageBoxButtons.OK,
                               MessageBoxIcon.Error);
                 Environment.Exit(1);
+            }
+        }
+
+        private void InitializeAuthService()
+        {
+            try
+            {
+                authService = new AuthService(databaseService, loggingService);
+                LogMessage("AUTH", "AuthService initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"AuthService initialization failed: {ex.Message}");
+                throw new Exception($"AuthService initialization failed: {ex.Message}", ex);
             }
         }
 
@@ -135,6 +153,12 @@ namespace InventorySystem
                 MessageBox.Show($"Print/Export service initialization error: {ex.Message}",
                     "Initialization Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        private void UpdateMenuVisibility()
+        {
+            // Only show Manage Accounts menu for admin users
+            manageAccntsToolStripMenuItem.Visible = isAdminUser;
         }
 
         private void SetupPrintMenu()
@@ -473,7 +497,7 @@ namespace InventorySystem
             CenterToScreen();
             SetupProgressBar();
 
-            if (dataLoadingService == null || databaseService == null)
+            if (dataLoadingService == null || databaseService == null || authService == null)
             {
                 ShowErrorState("Service initialization failed - application cannot continue");
                 MessageBox.Show("Critical services failed to initialize. The application will now close.",
@@ -580,6 +604,8 @@ namespace InventorySystem
                 editSuppliesToolStripMenuItem.Enabled = !isGuest && isAdminUser;
             if (editAssetsToolStripMenuItem != null)
                 editAssetsToolStripMenuItem.Enabled = !isGuest && isAdminUser;
+            if (editAccountsToolStripMenuItem != null)
+                editAccountsToolStripMenuItem.Enabled = isAdminUser;
 
             LogMessage("USER", $"User interface configured for {username} (Role: {role})");
         }
@@ -608,6 +634,19 @@ namespace InventorySystem
 
             LogMessage("DATA", "Loading assets data...");
             LoadTableData(dataLoadingService.GetAssetsTableName(), "Assets");
+        }
+
+        private void LoadAccountsData()
+        {
+            if (dataLoadingService == null)
+            {
+                ShowErrorState("Data loading service not available");
+                LogMessage("ERROR", "Cannot load accounts - service not initialized");
+                return;
+            }
+
+            LogMessage("DATA", "Loading accounts data...");
+            LoadTableData("Users", "Accounts");
         }
 
         private void LoadTableData(string tableName, string tableType)
@@ -689,6 +728,7 @@ namespace InventorySystem
 
             editSuppliesToolStripMenuItem.Enabled = isAdminUser;
             editAssetsToolStripMenuItem.Enabled = isAdminUser;
+            editAccountsToolStripMenuItem.Enabled = isAdminUser;
 
             this.Text = isEditMode ?
                 $"Inventory Management System - EDIT MODE ({currentTable})" :
@@ -775,6 +815,8 @@ namespace InventorySystem
             }
         }
 
+        // ========== EVENT HANDLERS ==========
+
         private void logoutToolStripMenuItem_Click(object sender, EventArgs e)
         {
             LogMessage("USER", "Logout initiated");
@@ -783,6 +825,9 @@ namespace InventorySystem
                 LogMessage("USER", "Logout cancelled due to unsaved changes");
                 return;
             }
+
+            // Use AuthService for logout logging
+            authService?.LogUserLogout(LoginFrm.CurrentUsername);
 
             LoginFrm loginForm = new LoginFrm();
             loginForm.StartPosition = FormStartPosition.CenterScreen;
@@ -825,6 +870,17 @@ namespace InventorySystem
             LoadAssetsData();
         }
 
+        private void displayAccountsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            LogMessage("NAVIGATION", "Switching to accounts table view");
+            if (editService.CheckForUnsavedChanges()) return;
+
+            ShowLoadingState("Loading accounts table...", 10);
+            DisableEditMode();
+            ClearSearch();
+            LoadAccountsData();
+        }
+
         private void editSuppliesToolStripMenuItem_Click(object sender, EventArgs e)
         {
             LogMessage("EDIT", "Edit supplies mode requested");
@@ -845,6 +901,18 @@ namespace InventorySystem
                 if (editService.CheckForUnsavedChanges()) return;
                 ClearSearch();
                 LoadAssetsData();
+            }
+            EnableEditMode();
+        }
+
+        private void editAccountsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            LogMessage("EDIT", "Edit accounts mode requested");
+            if (currentTable != "Accounts")
+            {
+                if (editService.CheckForUnsavedChanges()) return;
+                ClearSearch();
+                LoadAccountsData();
             }
             EnableEditMode();
         }
@@ -875,9 +943,13 @@ namespace InventorySystem
                 {
                     LoadSuppliesData();
                 }
-                else
+                else if (currentTable == "Assets")
                 {
                     LoadAssetsData();
+                }
+                else if (currentTable == "Accounts")
+                {
+                    LoadAccountsData();
                 }
             }
             catch (Exception ex)
@@ -891,11 +963,64 @@ namespace InventorySystem
 
         private void changePasswordToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LogMessage("USER", "Change password requested");
-            MessageBox.Show("Password change functionality will be available in the next update.",
-                           "Feature Coming Soon",
-                           MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ShowChangePasswordDialog();
         }
+
+        private void ShowChangePasswordDialog()
+        {
+            try
+            {
+                LogMessage("USER", "Change password dialog opened");
+
+                using (ChangePasswordDialog dialog = new ChangePasswordDialog())
+                {
+                    dialog.StartPosition = FormStartPosition.CenterParent;
+
+                    if (dialog.ShowDialog(this) == DialogResult.OK)
+                    {
+                        string username = dialog.Username;
+                        string currentPassword = dialog.CurrentPassword;
+                        string newPassword = dialog.NewPassword;
+
+                        if (string.IsNullOrWhiteSpace(username) ||
+                            string.IsNullOrWhiteSpace(currentPassword) ||
+                            string.IsNullOrWhiteSpace(newPassword))
+                        {
+                            MessageBox.Show("Please fill in all fields.", "Validation Error",
+                                MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            return;
+                        }
+
+                        ShowLoadingState("Changing password...", 50);
+
+                        // Use AuthService for password change
+                        if (authService.ChangeUserPassword(username, currentPassword, newPassword))
+                        {
+                            ShowCompletedState("Password changed successfully", 100);
+                            MessageBox.Show("Password changed successfully!", "Success",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            LogMessage("USER", $"Password changed successfully for user: {username}");
+                        }
+                        else
+                        {
+                            ShowErrorState("Password change failed");
+                            MessageBox.Show("Failed to change password. Please check your current password and try again.",
+                                "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            LogMessage("ERROR", $"Password change failed for user: {username}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage("ERROR", $"Change password error: {ex.Message}");
+                ShowErrorState("Password change error");
+                MessageBox.Show($"An error occurred while changing password: {ex.Message}",
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // ========== DATA GRID VIEW EVENT HANDLERS ==========
 
         private void dataGridView1_CellContentClick(object sender, DataGridViewCellEventArgs e)
         {
@@ -1004,6 +1129,84 @@ namespace InventorySystem
             {
                 PerformSearch(searchToolStripTextBox.Text);
             }
+        }
+    }
+
+    // Change Password Dialog (unchanged from your original)
+    public class ChangePasswordDialog : Form
+    {
+        private TextBox txtUsername;
+        private TextBox txtCurrentPassword;
+        private TextBox txtNewPassword;
+        private Button btnConfirm;
+        private Button btnCancel;
+        private Label lblUsername;
+        private Label lblCurrentPassword;
+        private Label lblNewPassword;
+
+        public string Username => txtUsername.Text;
+        public string CurrentPassword => txtCurrentPassword.Text;
+        public string NewPassword => txtNewPassword.Text;
+
+        public ChangePasswordDialog()
+        {
+            InitializeComponent();
+        }
+
+        private void InitializeComponent()
+        {
+            this.Size = new Size(350, 250);
+            this.Text = "Change Password";
+            this.FormBorderStyle = FormBorderStyle.FixedDialog;
+            this.MaximizeBox = false;
+            this.MinimizeBox = false;
+            this.StartPosition = FormStartPosition.CenterParent;
+
+            lblUsername = new Label { Text = "Username:", Location = new Point(20, 20), Size = new Size(100, 20) };
+            txtUsername = new TextBox { Location = new Point(120, 20), Size = new Size(180, 20) };
+
+            lblCurrentPassword = new Label { Text = "Current Password:", Location = new Point(20, 60), Size = new Size(100, 20) };
+            txtCurrentPassword = new TextBox { Location = new Point(120, 60), Size = new Size(180, 20), UseSystemPasswordChar = true };
+
+            lblNewPassword = new Label { Text = "New Password:", Location = new Point(20, 100), Size = new Size(100, 20) };
+            txtNewPassword = new TextBox { Location = new Point(120, 100), Size = new Size(180, 20), UseSystemPasswordChar = true };
+
+            btnConfirm = new Button { Text = "Confirm", Location = new Point(120, 150), Size = new Size(80, 30), DialogResult = DialogResult.OK };
+            btnCancel = new Button { Text = "Cancel", Location = new Point(220, 150), Size = new Size(80, 30), DialogResult = DialogResult.Cancel };
+
+            btnConfirm.Click += (s, e) => { if (ValidateInput()) this.DialogResult = DialogResult.OK; };
+            btnCancel.Click += (s, e) => this.DialogResult = DialogResult.Cancel;
+
+            this.Controls.AddRange(new Control[] {
+                lblUsername, txtUsername,
+                lblCurrentPassword, txtCurrentPassword,
+                lblNewPassword, txtNewPassword,
+                btnConfirm, btnCancel
+            });
+
+            this.AcceptButton = btnConfirm;
+            this.CancelButton = btnCancel;
+        }
+
+        private bool ValidateInput()
+        {
+            if (string.IsNullOrWhiteSpace(txtUsername.Text) ||
+                string.IsNullOrWhiteSpace(txtCurrentPassword.Text) ||
+                string.IsNullOrWhiteSpace(txtNewPassword.Text))
+            {
+                MessageBox.Show("Please fill in all fields.", "Validation Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+
+            if (txtNewPassword.Text.Length < 4)
+            {
+                MessageBox.Show("New password must be at least 4 characters long.", "Validation Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
+            }
+
+            return true;
         }
     }
 }

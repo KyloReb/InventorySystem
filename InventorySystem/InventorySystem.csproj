@@ -231,6 +231,7 @@
     <Compile Include="LoginFrm.Designer.cs">
       <DependentUpon>LoginFrm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Services\AuthService.cs" />
     <Compile Include="Services\DatabaseService.cs" />
     <Compile Include="Services\DataGridViewEditService.cs" />
     <Compile Include="Services\DataLoadingService.cs" />
