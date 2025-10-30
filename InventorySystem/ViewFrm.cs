@@ -1220,7 +1220,6 @@ namespace InventorySystem
 
         private void ValidateAndConfirm()
         {
-<<<<<<< HEAD
             if (string.IsNullOrWhiteSpace(txtUsername.Text))
             {
                 MessageBox.Show("Please enter your username.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -1240,28 +1239,13 @@ namespace InventorySystem
                 MessageBox.Show("Please enter a new password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 txtNewPassword.Focus();
                 return;
-=======
-            if (string.IsNullOrWhiteSpace(txtUsername.Text) ||
-                string.IsNullOrWhiteSpace(txtCurrentPassword.Text) ||
-                string.IsNullOrWhiteSpace(txtNewPassword.Text))
-            {
-                MessageBox.Show("Please fill in all fields.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
->>>>>>> de000cd88c7d5c3097e6c10aad1828b77b0e841a
             }
 
             if (txtNewPassword.Text.Length < 6)
             {
-<<<<<<< HEAD
                 MessageBox.Show("New password must be at least 6 characters long.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 txtNewPassword.Focus();
                 return;
-=======
-                MessageBox.Show("New password must be at least 4 characters long.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
->>>>>>> de000cd88c7d5c3097e6c10aad1828b77b0e841a
             }
 
             if (txtNewPassword.Text != txtConfirmPassword.Text)
