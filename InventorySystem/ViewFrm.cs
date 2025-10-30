@@ -1196,41 +1196,19 @@ namespace InventorySystem
 
         private bool ValidateInput()
         {
-<<<<<<< HEAD
             if (string.IsNullOrWhiteSpace(txtUsername.Text) ||
                 string.IsNullOrWhiteSpace(txtCurrentPassword.Text) ||
                 string.IsNullOrWhiteSpace(txtNewPassword.Text))
             {
                 MessageBox.Show("Please fill in all fields.", "Validation Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
-=======
-            if (string.IsNullOrWhiteSpace(txtUsername.Text))
-            {
-                MessageBox.Show("Please enter username.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(txtCurrentPassword.Text))
-            {
-                MessageBox.Show("Please enter current password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(txtNewPassword.Text))
-            {
-                MessageBox.Show("Please enter new password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
->>>>>>> d2b31c0648712e88d0d38d3b2bf507dd2afb8d7f
                 return false;
             }
 
             if (txtNewPassword.Text.Length < 4)
             {
-<<<<<<< HEAD
                 MessageBox.Show("New password must be at least 4 characters long.", "Validation Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
-=======
-                MessageBox.Show("New password must be at least 4 characters long.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
->>>>>>> d2b31c0648712e88d0d38d3b2bf507dd2afb8d7f
                 return false;
             }
 
