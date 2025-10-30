@@ -26,6 +26,7 @@ namespace InventorySystem
         private DataTable originalDataTable;
         private SqlDataAdapter dataAdapter;
         private bool isAdminUser = false;
+        private bool isGuestUser = false;
         private bool isSearchActive = false;
 
         private DataGridViewEditService editService;
@@ -159,6 +160,10 @@ namespace InventorySystem
         {
             // Only show Manage Accounts menu for admin users
             manageAccntsToolStripMenuItem.Visible = isAdminUser;
+
+            // Hide logout and change password for guest users
+            logoutToolStripMenuItem.Visible = !isGuestUser;
+            changePasswordToolStripMenuItem.Visible = !isGuestUser;
         }
 
         private void SetupPrintMenu()
@@ -477,8 +482,9 @@ namespace InventorySystem
             string username = LoginFrm.CurrentUsername;
             isAdminUser = role.Equals("Admin", StringComparison.OrdinalIgnoreCase) ||
                          role.Equals("Administrator", StringComparison.OrdinalIgnoreCase);
+            isGuestUser = role.Equals("Guest", StringComparison.OrdinalIgnoreCase);
 
-            LogMessage("USER", $"User logged in: {username} (Role: {role}, IsAdmin: {isAdminUser})");
+            LogMessage("USER", $"User logged in: {username} (Role: {role}, IsAdmin: {isAdminUser}, IsGuest: {isGuestUser})");
         }
 
         private void SetupProgressBar()
@@ -826,11 +832,7 @@ namespace InventorySystem
                 return;
             }
 
-<<<<<<< HEAD
             // Log user logout
-=======
-            // Use AuthService for logout logging
->>>>>>> 89eb856876213f20bfc10b19e31b453b529961f6
             authService?.LogUserLogout(LoginFrm.CurrentUsername);
 
             LoginFrm loginForm = new LoginFrm();
@@ -1194,41 +1196,19 @@ namespace InventorySystem
 
         private bool ValidateInput()
         {
-<<<<<<< HEAD
-            if (string.IsNullOrWhiteSpace(txtUsername.Text))
-            {
-                MessageBox.Show("Please enter username.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(txtCurrentPassword.Text))
-            {
-                MessageBox.Show("Please enter current password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(txtNewPassword.Text))
-            {
-                MessageBox.Show("Please enter new password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-=======
             if (string.IsNullOrWhiteSpace(txtUsername.Text) ||
                 string.IsNullOrWhiteSpace(txtCurrentPassword.Text) ||
                 string.IsNullOrWhiteSpace(txtNewPassword.Text))
             {
                 MessageBox.Show("Please fill in all fields.", "Validation Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
->>>>>>> 89eb856876213f20bfc10b19e31b453b529961f6
                 return false;
             }
 
             if (txtNewPassword.Text.Length < 4)
             {
-<<<<<<< HEAD
-                MessageBox.Show("New password must be at least 4 characters long.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-=======
                 MessageBox.Show("New password must be at least 4 characters long.", "Validation Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
->>>>>>> 89eb856876213f20bfc10b19e31b453b529961f6
                 return false;
             }
 
