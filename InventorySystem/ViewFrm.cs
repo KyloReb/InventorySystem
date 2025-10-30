@@ -639,6 +639,7 @@ namespace InventorySystem
             LoadTableData(dataLoadingService.GetAssetsTableName(), "Assets");
         }
 
+        // Update the LoadAccountsData method in ViewFrm.cs
         private void LoadAccountsData()
         {
             if (dataLoadingService == null)
@@ -649,9 +650,43 @@ namespace InventorySystem
             }
 
             LogMessage("DATA", "Loading accounts data...");
-            LoadTableData("Users", "Accounts");
-        }
 
+            try
+            {
+                ShowLoadingState("Loading user accounts...", 30);
+
+                // Load the Users table data
+                dataTable = dataLoadingService.LoadTableData("Users", "Accounts", ShowLoadingState);
+                originalDataTable = dataTable.Copy();
+
+                // Use the specialized Users data adapter
+                dataAdapter = dataLoadingService.CreateDataAdapter("Users");
+
+                // Initialize edit service with the data
+                editService.InitializeData(dataTable, dataAdapter);
+
+                dataGridView1.DataSource = null;
+                dataGridView1.AutoGenerateColumns = true;
+                dataGridView1.DataSource = dataTable;
+                dataGridView1.ReadOnly = !editService.IsEditMode;
+
+                currentTable = "Accounts";
+                UpdatePrintTitle();
+                AdjustFormWidth();
+
+                string successMessage = $"Accounts data loaded - {dataTable.Rows.Count} users";
+                ShowCompletedState(successMessage, 100);
+
+                LogMessage("DATA", $"Accounts data loaded successfully - {dataTable.Rows.Count} users");
+            }
+            catch (Exception ex)
+            {
+                string errorMessage = $"Error loading accounts data: {ex.Message}";
+                ShowErrorState($"Error loading accounts data");
+                LogMessage("ERROR", errorMessage);
+                MessageBox.Show(errorMessage, "Data Load Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
         private void LoadTableData(string tableName, string tableType)
         {
             if (dataLoadingService == null)

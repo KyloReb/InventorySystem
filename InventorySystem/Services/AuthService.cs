@@ -23,6 +23,8 @@ namespace InventorySystem.Services
                 // First verify the current password
                 if (!VerifyCurrentPassword(username, currentPassword))
                 {
+                    MessageBox.Show("Current password is incorrect.", "Password Change Failed",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
 
@@ -35,18 +37,30 @@ namespace InventorySystem.Services
 
                     using (SqlCommand command = new SqlCommand(updateQuery, connection))
                     {
-                        command.Parameters.AddWithValue("@NewPassword", newPassword); // In production, hash this password
+                        command.Parameters.AddWithValue("@NewPassword", newPassword);
                         command.Parameters.AddWithValue("@Username", username);
 
                         int rowsAffected = command.ExecuteNonQuery();
-                        return rowsAffected > 0;
+
+                        if (rowsAffected > 0)
+                        {
+                            loggingService?.LogMessage("USER", $"Password changed successfully for user: {username}");
+                            return true;
+                        }
+                        else
+                        {
+                            loggingService?.LogMessage("ERROR", $"Password change failed - no rows affected for user: {username}");
+                            return false;
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
                 loggingService?.LogMessage("ERROR", $"ChangeUserPassword error: {ex.Message}");
-                throw new Exception($"Failed to change password: {ex.Message}", ex);
+                MessageBox.Show($"Failed to change password: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
@@ -63,7 +77,7 @@ namespace InventorySystem.Services
                     using (SqlCommand command = new SqlCommand(verifyQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Username", username);
-                        command.Parameters.AddWithValue("@Password", currentPassword); // In production, compare hashed passwords
+                        command.Parameters.AddWithValue("@Password", currentPassword);
 
                         int count = Convert.ToInt32(command.ExecuteScalar());
                         return count > 0;
@@ -73,7 +87,9 @@ namespace InventorySystem.Services
             catch (Exception ex)
             {
                 loggingService?.LogMessage("ERROR", $"VerifyCurrentPassword error: {ex.Message}");
-                throw new Exception($"Failed to verify current password: {ex.Message}", ex);
+                MessageBox.Show($"Failed to verify current password: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
@@ -138,6 +154,8 @@ namespace InventorySystem.Services
                 if (UserExists(username))
                 {
                     loggingService?.LogMessage("WARNING", $"User creation failed - user already exists: {username}");
+                    MessageBox.Show($"User '{username}' already exists.", "User Creation Failed",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return false;
                 }
 
@@ -150,18 +168,30 @@ namespace InventorySystem.Services
                     using (SqlCommand command = new SqlCommand(createQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Username", username);
-                        command.Parameters.AddWithValue("@Password", password); // In production, hash this password
+                        command.Parameters.AddWithValue("@Password", password);
                         command.Parameters.AddWithValue("@Role", role);
 
                         int rowsAffected = command.ExecuteNonQuery();
-                        return rowsAffected > 0;
+
+                        if (rowsAffected > 0)
+                        {
+                            loggingService?.LogMessage("USER", $"User created successfully: {username} (Role: {role})");
+                            return true;
+                        }
+                        else
+                        {
+                            loggingService?.LogMessage("ERROR", $"User creation failed - no rows affected: {username}");
+                            return false;
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
                 loggingService?.LogMessage("ERROR", $"CreateUser error: {ex.Message}");
-                throw new Exception($"Failed to create user: {ex.Message}", ex);
+                MessageBox.Show($"Failed to create user: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
@@ -173,6 +203,8 @@ namespace InventorySystem.Services
                 if (username.Equals(LoginFrm.CurrentUsername, StringComparison.OrdinalIgnoreCase))
                 {
                     loggingService?.LogMessage("WARNING", $"User deletion prevented - cannot delete current user: {username}");
+                    MessageBox.Show("You cannot delete your own account while logged in.", "Deletion Prevented",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return false;
                 }
 
@@ -187,14 +219,26 @@ namespace InventorySystem.Services
                         command.Parameters.AddWithValue("@Username", username);
 
                         int rowsAffected = command.ExecuteNonQuery();
-                        return rowsAffected > 0;
+
+                        if (rowsAffected > 0)
+                        {
+                            loggingService?.LogMessage("USER", $"User deleted successfully: {username}");
+                            return true;
+                        }
+                        else
+                        {
+                            loggingService?.LogMessage("ERROR", $"User deletion failed - user not found: {username}");
+                            return false;
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
                 loggingService?.LogMessage("ERROR", $"DeleteUser error: {ex.Message}");
-                throw new Exception($"Failed to delete user: {ex.Message}", ex);
+                MessageBox.Show($"Failed to delete user: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
@@ -214,14 +258,26 @@ namespace InventorySystem.Services
                         command.Parameters.AddWithValue("@Username", username);
 
                         int rowsAffected = command.ExecuteNonQuery();
-                        return rowsAffected > 0;
+
+                        if (rowsAffected > 0)
+                        {
+                            loggingService?.LogMessage("USER", $"User role updated: {username} -> {newRole}");
+                            return true;
+                        }
+                        else
+                        {
+                            loggingService?.LogMessage("ERROR", $"User role update failed - user not found: {username}");
+                            return false;
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
                 loggingService?.LogMessage("ERROR", $"UpdateUserRole error: {ex.Message}");
-                throw new Exception($"Failed to update user role: {ex.Message}", ex);
+                MessageBox.Show($"Failed to update user role: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return false;
             }
         }
 
