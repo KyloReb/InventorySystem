@@ -17,6 +17,7 @@ namespace InventorySystem
     {
         private DatabaseService _databaseService;
         private LoggingService _loggingService;
+        private AuthService _authService;
         private bool isLoading = false;
 
         public static string CurrentUsername { get; private set; }
@@ -29,6 +30,7 @@ namespace InventorySystem
             ConfigurePasswordField();
             ConfigureEnterKeyBehavior();
             ConfigureProgressBar();
+            ConfigureForgotPasswordLabel();
         }
 
         private void InitializeServices()
@@ -41,6 +43,9 @@ namespace InventorySystem
                 // Initialize database service with connection string from configuration
                 string connectionString = GetConnectionString();
                 _databaseService = new DatabaseService(connectionString, _loggingService);
+
+                // Initialize auth service
+                _authService = new AuthService(_databaseService, _loggingService);
 
                 // Test connection on startup
                 if (!_databaseService.TestConnection())
@@ -103,6 +108,12 @@ namespace InventorySystem
             toolStripProgressBar1.Visible = false;
         }
 
+        private void ConfigureForgotPasswordLabel()
+        {
+            // Ensure the label has hand cursor to indicate it's clickable
+            lblForgotPassword.Cursor = Cursors.Hand;
+        }
+
         private void TextBox_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter && !isLoading)
@@ -141,63 +152,44 @@ namespace InventorySystem
 
                 try
                 {
-                    // Use DatabaseService instead of raw SQL connection
-                    if (_databaseService == null)
+                    // Use AuthService for authentication
+                    if (_authService == null)
                     {
-                        throw new InvalidOperationException("Database service is not available");
+                        throw new InvalidOperationException("Authentication service is not available");
                     }
 
-                    string query = "SELECT UserId, Username, Password, Role FROM Users WHERE Username = @Username";
-                    var parameters = new SqlParameter[]
+                    // Validate user credentials using AuthService - run on background thread
+                    bool isValidUser = await Task.Run(() => _authService.ValidateUserCredentials(username, password));
+
+                    if (isValidUser)
                     {
-                        new SqlParameter("@Username", username)
-                    };
+                        // Get user role using AuthService - run on background thread
+                        string userRole = await Task.Run(() => _authService.GetUserRole(username));
 
-                    // Execute query using DatabaseService
-                    DataTable result = await Task.Run(() => _databaseService.ExecuteQuery(query, parameters));
+                        CurrentUsername = username;
+                        CurrentRole = userRole;
 
-                    if (result.Rows.Count > 0)
-                    {
-                        DataRow userRow = result.Rows[0];
-                        string storedPassword = userRow["Password"].ToString();
+                        // Log successful login using AuthService
+                        await Task.Run(() => _authService.LogUserLogin(username, userRole));
 
-                        if (password == storedPassword)
-                        {
-                            CurrentUsername = userRow["Username"].ToString();
-                            CurrentRole = userRow["Role"].ToString();
+                        // Simulate loading time
+                        await Task.Delay(1000);
 
-                            // Log successful login
-                            _loggingService?.LogMessage("AUTH", $"User {username} logged in successfully as {CurrentRole}");
-
-                            // Simulate loading time
-                            await Task.Delay(1000);
-
-                            ViewFrm viewForm = new ViewFrm();
-                            viewForm.Show();
-                            this.Hide();
-                            return true;
-                        }
-                        else
-                        {
-                            _loggingService?.LogMessage("AUTH", $"Failed login attempt for user {username} - invalid password");
-                            ShowPasswordError("Invalid password");
-                            passwordTxtBox.Focus();
-                            passwordTxtBox.SelectAll();
-                            return false;
-                        }
+                        ViewFrm viewForm = new ViewFrm();
+                        viewForm.Show();
+                        this.Hide();
+                        return true;
                     }
                     else
                     {
-                        _loggingService?.LogMessage("AUTH", $"Failed login attempt - username not found: {username}");
-                        ShowUsernameError("Username not found");
-                        userTxtBox.Focus();
-                        userTxtBox.SelectAll();
+                        ShowPasswordError("Invalid username or password");
+                        passwordTxtBox.Focus();
+                        passwordTxtBox.SelectAll();
                         return false;
                     }
                 }
                 catch (Exception ex)
                 {
-                    _loggingService?.LogMessage("ERROR", $"Login error for user {username}: {ex.Message}");
                     MessageBox.Show($"Error during login: {ex.Message}", "Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return false;
                 }
@@ -213,8 +205,11 @@ namespace InventorySystem
                 CurrentUsername = "Guest";
                 CurrentRole = "Guest";
 
-                // Log guest access
-                _loggingService?.LogMessage("AUTH", "Guest user accessed the system");
+                // Log guest access using AuthService - run on background thread
+                if (_authService != null)
+                {
+                    await Task.Run(() => _authService.LogUserLogin("Guest", "Guest"));
+                }
 
                 // Simulate loading time
                 await Task.Delay(800);
@@ -226,13 +221,196 @@ namespace InventorySystem
             });
         }
 
+        private async void lblForgotPassword_Click(object sender, EventArgs e)
+        {
+            if (isLoading) return;
+
+            await ShowForgotPasswordDialogAsync();
+        }
+
+        private async Task ShowForgotPasswordDialogAsync()
+        {
+            try
+            {
+                using (var dialog = new Form()
+                {
+                    Width = 500,
+                    Height = 400,
+                    Text = "Change Password",
+                    StartPosition = FormStartPosition.CenterParent,
+                    FormBorderStyle = FormBorderStyle.FixedDialog,
+                    MaximizeBox = false,
+                    MinimizeBox = false
+                })
+                {
+                    // Create controls for the dialog
+                    var lblUsername = new Label() { Text = "Username:", Left = 20, Top = 20, Width = 150, Font = new Font("Microsoft Sans Serif", 10F) };
+                    var txtUsername = new TextBox() { Left = 180, Top = 20, Width = 280, Font = new Font("Microsoft Sans Serif", 10F) };
+
+                    var lblCurrentPassword = new Label() { Text = "Current Password:", Left = 20, Top = 70, Width = 150, Font = new Font("Microsoft Sans Serif", 10F) };
+                    var txtCurrentPassword = new TextBox() { Left = 180, Top = 70, Width = 280, Font = new Font("Microsoft Sans Serif", 10F), UseSystemPasswordChar = true };
+
+                    var lblNewPassword = new Label() { Text = "New Password:", Left = 20, Top = 120, Width = 150, Font = new Font("Microsoft Sans Serif", 10F) };
+                    var txtNewPassword = new TextBox() { Left = 180, Top = 120, Width = 280, Font = new Font("Microsoft Sans Serif", 10F), UseSystemPasswordChar = true };
+
+                    var lblConfirmPassword = new Label() { Text = "Confirm Password:", Left = 20, Top = 170, Width = 150, Font = new Font("Microsoft Sans Serif", 10F) };
+                    var txtConfirmPassword = new TextBox() { Left = 180, Top = 170, Width = 280, Font = new Font("Microsoft Sans Serif", 10F), UseSystemPasswordChar = true };
+
+                    var btnChange = new Button() { Text = "Change Password", Left = 180, Top = 230, Width = 120, Font = new Font("Microsoft Sans Serif", 10F, FontStyle.Bold) };
+                    var btnCancel = new Button() { Text = "Cancel", Left = 320, Top = 230, Width = 80, Font = new Font("Microsoft Sans Serif", 10F) };
+
+                    var lblMessage = new Label() { Left = 20, Top = 280, Width = 440, Height = 50, ForeColor = Color.Red, Font = new Font("Microsoft Sans Serif", 9F) };
+
+                    // Add controls to dialog
+                    dialog.Controls.AddRange(new Control[] {
+                        lblUsername, txtUsername,
+                        lblCurrentPassword, txtCurrentPassword,
+                        lblNewPassword, txtNewPassword,
+                        lblConfirmPassword, txtConfirmPassword,
+                        btnChange, btnCancel, lblMessage
+                    });
+
+                    // Create a TaskCompletionSource to handle the dialog result asynchronously
+                    var tcs = new TaskCompletionSource<DialogResult>();
+
+                    // Set up event handlers
+                    btnChange.Click += async (s, ev) =>
+                    {
+                        await HandlePasswordChangeAsync(txtUsername, txtCurrentPassword, txtNewPassword, txtConfirmPassword, lblMessage, dialog, tcs);
+                    };
+
+                    btnCancel.Click += (s, ev) =>
+                    {
+                        dialog.DialogResult = DialogResult.Cancel;
+                        tcs.TrySetResult(DialogResult.Cancel);
+                    };
+
+                    // Handle form closing
+                    dialog.FormClosed += (s, ev) =>
+                    {
+                        tcs.TrySetResult(dialog.DialogResult);
+                    };
+
+                    // Set default button and accept/close behaviors
+                    dialog.AcceptButton = btnChange;
+                    dialog.CancelButton = btnCancel;
+
+                    // Show dialog
+                    dialog.Show(this);
+
+                    // Wait for the dialog to complete asynchronously
+                    var result = await tcs.Task;
+
+                    if (result == DialogResult.OK)
+                    {
+                        MessageBox.Show("Password changed successfully!", "Success",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error showing password change dialog: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private async Task HandlePasswordChangeAsync(TextBox txtUsername, TextBox txtCurrentPassword,
+            TextBox txtNewPassword, TextBox txtConfirmPassword, Label lblMessage, Form dialog, TaskCompletionSource<DialogResult> tcs)
+        {
+            try
+            {
+                // Clear previous messages
+                lblMessage.Text = "";
+                lblMessage.ForeColor = Color.Red;
+
+                // Validate inputs
+                string username = txtUsername.Text.Trim();
+                string currentPassword = txtCurrentPassword.Text;
+                string newPassword = txtNewPassword.Text;
+                string confirmPassword = txtConfirmPassword.Text;
+
+                if (string.IsNullOrEmpty(username))
+                {
+                    lblMessage.Text = "Username is required.";
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(currentPassword))
+                {
+                    lblMessage.Text = "Current password is required.";
+                    return;
+                }
+
+                if (string.IsNullOrEmpty(newPassword))
+                {
+                    lblMessage.Text = "New password is required.";
+                    return;
+                }
+
+                if (newPassword != confirmPassword)
+                {
+                    lblMessage.Text = "New password and confirmation do not match.";
+                    return;
+                }
+
+                if (newPassword.Length < 4)
+                {
+                    lblMessage.Text = "New password must be at least 4 characters long.";
+                    return;
+                }
+
+                // Use AuthService to change password
+                if (_authService == null)
+                {
+                    lblMessage.Text = "Authentication service is not available.";
+                    return;
+                }
+
+                // Show loading state
+                await SetLoadingStateAsync(true);
+
+                try
+                {
+                    // Perform password change asynchronously on background thread
+                    bool success = await Task.Run(() =>
+                        _authService.ChangeUserPassword(username, currentPassword, newPassword));
+
+                    if (success)
+                    {
+                        lblMessage.ForeColor = Color.Green;
+                        lblMessage.Text = "Password changed successfully!";
+
+                        // Close dialog after successful change with delay
+                        await Task.Delay(1000);
+                        dialog.DialogResult = DialogResult.OK;
+                        tcs.TrySetResult(DialogResult.OK);
+                        dialog.Close();
+                    }
+                    else
+                    {
+                        lblMessage.Text = "Failed to change password. Please check your current password.";
+                    }
+                }
+                finally
+                {
+                    await SetLoadingStateAsync(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                await SetLoadingStateAsync(false);
+                lblMessage.Text = $"Error: {ex.Message}";
+            }
+        }
+
         private async Task PerformLoginAction(Func<Task<bool>> action)
         {
             if (isLoading) return;
 
             try
             {
-                SetLoadingState(true);
+                await SetLoadingStateAsync(true);
 
                 // Show progress bar
                 toolStripProgressBar1.Visible = true;
@@ -242,15 +420,26 @@ namespace InventorySystem
 
                 if (!success)
                 {
-                    SetLoadingState(false);
+                    await SetLoadingStateAsync(false);
                 }
                 // If successful, the form will be hidden so we don't need to reset loading state
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                SetLoadingState(false);
+                await SetLoadingStateAsync(false);
             }
+        }
+
+        private async Task SetLoadingStateAsync(bool loading)
+        {
+            if (this.InvokeRequired)
+            {
+                await this.InvokeAsync(() => SetLoadingState(loading));
+                return;
+            }
+
+            SetLoadingState(loading);
         }
 
         private void SetLoadingState(bool loading)
@@ -262,6 +451,7 @@ namespace InventorySystem
             viewerBtn.Enabled = !loading;
             userTxtBox.Enabled = !loading;
             passwordTxtBox.Enabled = !loading;
+            lblForgotPassword.Enabled = !loading;
 
             // Show/hide progress bar
             toolStripProgressBar1.Visible = loading;
@@ -282,8 +472,27 @@ namespace InventorySystem
             this.Refresh();
         }
 
+        // Helper method for safe Invoke operations
+        private async Task InvokeAsync(Action action)
+        {
+            if (this.InvokeRequired)
+            {
+                await Task.Run(() => this.Invoke(action));
+            }
+            else
+            {
+                action();
+            }
+        }
+
         private void ShowUsernameError(string message)
         {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new Action<string>(ShowUsernameError), message);
+                return;
+            }
+
             // Remove existing error label if any
             Control existingError = this.Controls.Find("usernameErrorLabel", true).FirstOrDefault();
             if (existingError != null)
@@ -305,6 +514,12 @@ namespace InventorySystem
 
         private void ShowPasswordError(string message)
         {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new Action<string>(ShowPasswordError), message);
+                return;
+            }
+
             // Remove existing error label if any
             Control existingError = this.Controls.Find("passwordErrorLabel", true).FirstOrDefault();
             if (existingError != null)
@@ -326,6 +541,12 @@ namespace InventorySystem
 
         private void ClearErrors()
         {
+            if (this.InvokeRequired)
+            {
+                this.Invoke(new Action(ClearErrors));
+                return;
+            }
+
             // Remove username error label if exists
             Control usernameError = this.Controls.Find("usernameErrorLabel", true).FirstOrDefault();
             if (usernameError != null)
@@ -367,7 +588,8 @@ namespace InventorySystem
                 SetLoadingState(false);
             }
 
-            // Dispose services
+            // Dispose services properly
+            _authService?.Dispose();
             _databaseService?.Dispose();
             _loggingService?.Dispose();
 

@@ -5,10 +5,11 @@ using InventorySystem.Services;
 
 namespace InventorySystem.Services
 {
-    public class AuthService
+    public class AuthService : IDisposable
     {
         private DatabaseService databaseService;
         private LoggingService loggingService;
+        private bool disposed = false;
 
         public AuthService(DatabaseService databaseService, LoggingService loggingService)
         {
@@ -330,6 +331,38 @@ namespace InventorySystem.Services
             {
                 loggingService?.LogMessage("ERROR", $"LogUserLogout error: {ex.Message}");
             }
+        }
+
+        // IDisposable implementation
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposed)
+            {
+                if (disposing)
+                {
+                    // Dispose managed resources
+                    databaseService?.Dispose();
+                    loggingService?.Dispose();
+
+                    // Set to null to prevent future access
+                    databaseService = null;
+                    loggingService = null;
+                }
+
+                disposed = true;
+            }
+        }
+
+        // Finalizer - only if you have unmanaged resources
+        ~AuthService()
+        {
+            Dispose(false);
         }
     }
 }
