@@ -155,7 +155,9 @@ namespace InventorySystem
                     // Use AuthService for authentication
                     if (_authService == null)
                     {
-                        throw new InvalidOperationException("Authentication service is not available");
+                        MessageBox.Show("Authentication service is not available", "Service Error",
+                            MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return false;
                     }
 
                     // Validate user credentials using AuthService - run on background thread
@@ -588,11 +590,8 @@ namespace InventorySystem
                 SetLoadingState(false);
             }
 
-            // Dispose services properly
-            _authService?.Dispose();
-            _databaseService?.Dispose();
-            _loggingService?.Dispose();
-
+            // Don't dispose services here - they might be needed by other forms
+            // Let the application exit handle disposal
             base.OnFormClosing(e);
         }
     }

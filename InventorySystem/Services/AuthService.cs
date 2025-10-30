@@ -32,10 +32,8 @@ namespace InventorySystem.Services
                 // Update to new password
                 string updateQuery = "UPDATE Users SET Password = @NewPassword WHERE Username = @Username";
 
-                using (SqlConnection connection = databaseService.GetConnection())
+                using (SqlConnection connection = databaseService.CreateNewConnection())
                 {
-                    connection.Open();
-
                     using (SqlCommand command = new SqlCommand(updateQuery, connection))
                     {
                         command.Parameters.AddWithValue("@NewPassword", newPassword);
@@ -71,10 +69,8 @@ namespace InventorySystem.Services
             {
                 string verifyQuery = "SELECT COUNT(*) FROM Users WHERE Username = @Username AND Password = @Password";
 
-                using (SqlConnection connection = databaseService.GetConnection())
+                using (SqlConnection connection = databaseService.CreateNewConnection())
                 {
-                    connection.Open();
-
                     using (SqlCommand command = new SqlCommand(verifyQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Username", username);
@@ -100,10 +96,8 @@ namespace InventorySystem.Services
             {
                 string validateQuery = "SELECT COUNT(*) FROM Users WHERE Username = @Username AND Password = @Password";
 
-                using (SqlConnection connection = databaseService.GetConnection())
+                using (SqlConnection connection = databaseService.CreateNewConnection())
                 {
-                    connection.Open();
-
                     using (SqlCommand command = new SqlCommand(validateQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Username", username);
@@ -117,7 +111,8 @@ namespace InventorySystem.Services
             catch (Exception ex)
             {
                 loggingService?.LogMessage("ERROR", $"ValidateUserCredentials error: {ex.Message}");
-                throw new Exception($"Failed to validate user credentials: {ex.Message}", ex);
+                // Don't throw exception here - return false instead
+                return false;
             }
         }
 
@@ -127,10 +122,8 @@ namespace InventorySystem.Services
             {
                 string roleQuery = "SELECT Role FROM Users WHERE Username = @Username";
 
-                using (SqlConnection connection = databaseService.GetConnection())
+                using (SqlConnection connection = databaseService.CreateNewConnection())
                 {
-                    connection.Open();
-
                     using (SqlCommand command = new SqlCommand(roleQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Username", username);
@@ -162,10 +155,8 @@ namespace InventorySystem.Services
 
                 string createQuery = "INSERT INTO Users (Username, Password, Role) VALUES (@Username, @Password, @Role)";
 
-                using (SqlConnection connection = databaseService.GetConnection())
+                using (SqlConnection connection = databaseService.CreateNewConnection())
                 {
-                    connection.Open();
-
                     using (SqlCommand command = new SqlCommand(createQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Username", username);
@@ -211,10 +202,8 @@ namespace InventorySystem.Services
 
                 string deleteQuery = "DELETE FROM Users WHERE Username = @Username";
 
-                using (SqlConnection connection = databaseService.GetConnection())
+                using (SqlConnection connection = databaseService.CreateNewConnection())
                 {
-                    connection.Open();
-
                     using (SqlCommand command = new SqlCommand(deleteQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Username", username);
@@ -249,10 +238,8 @@ namespace InventorySystem.Services
             {
                 string updateQuery = "UPDATE Users SET Role = @Role WHERE Username = @Username";
 
-                using (SqlConnection connection = databaseService.GetConnection())
+                using (SqlConnection connection = databaseService.CreateNewConnection())
                 {
-                    connection.Open();
-
                     using (SqlCommand command = new SqlCommand(updateQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Role", newRole);
@@ -288,10 +275,8 @@ namespace InventorySystem.Services
             {
                 string existsQuery = "SELECT COUNT(*) FROM Users WHERE Username = @Username";
 
-                using (SqlConnection connection = databaseService.GetConnection())
+                using (SqlConnection connection = databaseService.CreateNewConnection())
                 {
-                    connection.Open();
-
                     using (SqlCommand command = new SqlCommand(existsQuery, connection))
                     {
                         command.Parameters.AddWithValue("@Username", username);
@@ -304,7 +289,8 @@ namespace InventorySystem.Services
             catch (Exception ex)
             {
                 loggingService?.LogMessage("ERROR", $"UserExists error: {ex.Message}");
-                throw new Exception($"Failed to check if user exists: {ex.Message}", ex);
+                // Don't throw exception here - return false instead
+                return false;
             }
         }
 
@@ -346,23 +332,14 @@ namespace InventorySystem.Services
             {
                 if (disposing)
                 {
-                    // Dispose managed resources
-                    databaseService?.Dispose();
-                    loggingService?.Dispose();
-
-                    // Set to null to prevent future access
+                    // Don't dispose databaseService and loggingService here
+                    // They are shared resources that should be disposed by the creator
                     databaseService = null;
                     loggingService = null;
                 }
 
                 disposed = true;
             }
-        }
-
-        // Finalizer - only if you have unmanaged resources
-        ~AuthService()
-        {
-            Dispose(false);
         }
     }
 }
