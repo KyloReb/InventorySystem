@@ -256,12 +256,6 @@ namespace InventorySystem.Services
             try
             {
                 loggingService?.LogMessage("USER", $"User logged in: {username} (Role: {role})");
-<<<<<<< HEAD
-=======
-
-                // Optional: Log to database audit table
-                LogToAuditTable(username, "LOGIN", $"User {username} logged in with role {role}");
->>>>>>> 89eb856876213f20bfc10b19e31b453b529961f6
             }
             catch (Exception ex)
             {
@@ -275,50 +269,11 @@ namespace InventorySystem.Services
             try
             {
                 loggingService?.LogMessage("USER", $"User logged out: {username}");
-<<<<<<< HEAD
-=======
-
-                // Optional: Log to database audit table
-                LogToAuditTable(username, "LOGOUT", $"User {username} logged out");
->>>>>>> 89eb856876213f20bfc10b19e31b453b529961f6
             }
             catch (Exception ex)
             {
                 loggingService?.LogMessage("ERROR", $"LogUserLogout error: {ex.Message}");
             }
         }
-<<<<<<< HEAD
-=======
-
-        private void LogToAuditTable(string username, string action, string description)
-        {
-            try
-            {
-                // Optional: Implement database audit logging
-                string auditQuery = @"INSERT INTO UserAuditLog (Username, Action, Description, Timestamp) 
-                                     VALUES (@Username, @Action, @Description, @Timestamp)";
-
-                using (SqlConnection connection = databaseService.GetConnection())
-                {
-                    connection.Open();
-
-                    using (SqlCommand command = new SqlCommand(auditQuery, connection))
-                    {
-                        command.Parameters.AddWithValue("@Username", username);
-                        command.Parameters.AddWithValue("@Action", action);
-                        command.Parameters.AddWithValue("@Description", description);
-                        command.Parameters.AddWithValue("@Timestamp", DateTime.Now);
-
-                        command.ExecuteNonQuery();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Silent fail for audit logging - don't disrupt main functionality
-                loggingService?.LogMessage("WARNING", $"Audit logging failed: {ex.Message}");
-            }
-        }
->>>>>>> 89eb856876213f20bfc10b19e31b453b529961f6
     }
 }

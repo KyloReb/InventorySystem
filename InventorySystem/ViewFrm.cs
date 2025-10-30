@@ -826,11 +826,7 @@ namespace InventorySystem
                 return;
             }
 
-<<<<<<< HEAD
             // Log user logout
-=======
-            // Use AuthService for logout logging
->>>>>>> 89eb856876213f20bfc10b19e31b453b529961f6
             authService?.LogUserLogout(LoginFrm.CurrentUsername);
 
             LoginFrm loginForm = new LoginFrm();
@@ -1194,7 +1190,6 @@ namespace InventorySystem
 
         private bool ValidateInput()
         {
-<<<<<<< HEAD
             if (string.IsNullOrWhiteSpace(txtUsername.Text))
             {
                 MessageBox.Show("Please enter username.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -1210,25 +1205,12 @@ namespace InventorySystem
             if (string.IsNullOrWhiteSpace(txtNewPassword.Text))
             {
                 MessageBox.Show("Please enter new password.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-=======
-            if (string.IsNullOrWhiteSpace(txtUsername.Text) ||
-                string.IsNullOrWhiteSpace(txtCurrentPassword.Text) ||
-                string.IsNullOrWhiteSpace(txtNewPassword.Text))
-            {
-                MessageBox.Show("Please fill in all fields.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
->>>>>>> 89eb856876213f20bfc10b19e31b453b529961f6
                 return false;
             }
 
             if (txtNewPassword.Text.Length < 4)
             {
-<<<<<<< HEAD
                 MessageBox.Show("New password must be at least 4 characters long.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-=======
-                MessageBox.Show("New password must be at least 4 characters long.", "Validation Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
->>>>>>> 89eb856876213f20bfc10b19e31b453b529961f6
                 return false;
             }
 
